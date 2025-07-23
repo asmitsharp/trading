@@ -13,7 +13,7 @@ type Trade struct {
 
 type BinanceTradeEvent struct {
 	EventType     string `json:"e"`
-	EventTime     string `json:"E"`
+	EventTime     int64  `json:"E"`
 	Symbol        string `json:"s"`
 	TradeID       int64  `json:"t"`
 	Price         string `json:"p"`

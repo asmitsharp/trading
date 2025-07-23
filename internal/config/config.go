@@ -53,11 +53,11 @@ func Load() (*Config, error) {
 			WriteTimeout: getDurationEnv("SERVER_WRITE_TIMEOUT", 30*time.Second),
 		},
 		Postgres: PostgresConfig{
-			Host:     getEnv("POSTGRES_HOST", "localhost"),
+			Host:     getEnv("POSTGRES_HOST", "postgres"),
 			Port:     getIntEnv("POSTGRES_PORT", 5432),
-			Database: getEnv("POSTGRES_DATABASE", "crypto"),
-			Username: getEnv("POSTGRES_USERNAME", "crypto"),
-			Password: getEnv("POSTGRES_PASSWORD", "crypto"),
+			Database: getEnv("POSTGRES_DATABASE", "trading"),
+			Username: getEnv("POSTGRES_USERNAME", "trading"),
+			Password: getEnv("POSTGRES_PASSWORD", "tradingpass"),
 			SSLMode:  getEnv("POSTGRES_SSLMODE", "disable"),
 		},
 		ClickHouse: ClickhouseConfig{
@@ -70,7 +70,7 @@ func Load() (*Config, error) {
 		},
 		Binance: BinanceConfig{
 			WSBaseURL: getEnv("BINANCE_WS_URL", "wss://stream.binance.com:9443"),
-			Symbols:   []string{"btcusdt", "ethusdt", "adausdt", "bnbusdt", "xrpusdt", "solusdt", "dotusdt", "linkusdt", "ltcusdt", "bchusdt"},
+			Symbols:   []string{"btcusdt"},
 		},
 	}
 

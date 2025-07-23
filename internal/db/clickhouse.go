@@ -3,10 +3,12 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/ashmitsharp/trading/internal/config"
+	"github.com/shopspring/decimal"
 )
 
 // InitClickHouse initializes ClickHouse connection and creates necessary tables
@@ -129,8 +131,8 @@ func InsertTrades(conn driver.Conn, trades []TradeData) error {
 // TradeData represents a single trade record
 type TradeData struct {
 	Symbol       string
-	Price        float64
-	Quantity     float64
+	Price        decimal.Decimal
+	Quantity     decimal.Decimal
 	TradeID      uint64
 	Timestamp    int64
 	IsBuyerMaker uint8
@@ -152,7 +154,7 @@ func GetLatestPrices(conn driver.Conn) (map[string]LatestPrice, error) {
 
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query latest prices: %w", err)
+		return make(map[string]LatestPrice), fmt.Errorf("failed to query latest prices: %w", err)
 	}
 	defer rows.Close()
 
@@ -160,9 +162,9 @@ func GetLatestPrices(conn driver.Conn) (map[string]LatestPrice, error) {
 
 	for rows.Next() {
 		var symbol string
-		var price float64
+		var price decimal.Decimal
 		var timestamp int64
-		var volume float64
+		var volume decimal.Decimal
 
 		if err := rows.Scan(&symbol, &price, &timestamp, &volume); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
@@ -181,10 +183,10 @@ func GetLatestPrices(conn driver.Conn) (map[string]LatestPrice, error) {
 
 // LatestPrice represents the latest price data for a symbol
 type LatestPrice struct {
-	Symbol    string  `json:"symbol"`
-	Price     float64 `json:"price"`
-	Timestamp int64   `json:"timestamp"`
-	Volume    float64 `json:"volume"`
+	Symbol    string          `json:"symbol"`
+	Price     decimal.Decimal `json:"price"`
+	Timestamp int64           `json:"timestamp"`
+	Volume    decimal.Decimal `json:"volume"`
 }
 
 // GetOHLCVData gets OHLCV data for a symbol within a time range
@@ -239,7 +241,7 @@ func GetOHLCVData(conn driver.Conn, symbol string, fromTime, toTime int64, inter
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to query OHLCV data: %w", err)
+		return make([]OHLCVData, 0), fmt.Errorf("failed to query OHLCV data: %w", err)
 	}
 	defer rows.Close()
 
@@ -247,14 +249,14 @@ func GetOHLCVData(conn driver.Conn, symbol string, fromTime, toTime int64, inter
 
 	for rows.Next() {
 		var ohlcv OHLCVData
-		var timestamp int64
+		var minute time.Time
 
-		if err := rows.Scan(&ohlcv.Symbol, &timestamp, &ohlcv.Open, &ohlcv.High,
+		if err := rows.Scan(&ohlcv.Symbol, &minute, &ohlcv.Open, &ohlcv.High,
 			&ohlcv.Low, &ohlcv.Close, &ohlcv.Volume, &ohlcv.TradesCount); err != nil {
 			return nil, fmt.Errorf("failed to scan OHLCV row: %w", err)
 		}
 
-		ohlcv.Timestamp = timestamp
+		ohlcv.Timestamp = minute.Unix()
 		data = append(data, ohlcv)
 	}
 
@@ -263,14 +265,14 @@ func GetOHLCVData(conn driver.Conn, symbol string, fromTime, toTime int64, inter
 
 // OHLCVData represents OHLCV candlestick data
 type OHLCVData struct {
-	Symbol      string  `json:"symbol"`
-	Timestamp   int64   `json:"timestamp"`
-	Open        float64 `json:"open"`
-	High        float64 `json:"high"`
-	Low         float64 `json:"low"`
-	Close       float64 `json:"close"`
-	Volume      float64 `json:"volume"`
-	TradesCount int64   `json:"trades_count"`
+	Symbol      string          `json:"symbol"`
+	Timestamp   int64           `json:"timestamp"`
+	Open        decimal.Decimal `json:"open"`
+	High        decimal.Decimal `json:"high"`
+	Low         decimal.Decimal `json:"low"`
+	Close       decimal.Decimal `json:"close"`
+	Volume      decimal.Decimal `json:"volume"`
+	TradesCount uint64          `json:"trades_count"`
 }
 
 // parseInterval converts interval string to minutes

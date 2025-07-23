@@ -178,7 +178,7 @@ func (s *Scheduler) healthCheck() error {
 	}
 
 	// Check if we have recent trade data (within last 5 minutes)
-	var lastTradeTime sql.NullInt64
+	var lastTradeTime sql.NullFloat64
 	query := `
 		SELECT EXTRACT(EPOCH FROM MAX(updated_at))
 		FROM tokens
@@ -190,7 +190,7 @@ func (s *Scheduler) healthCheck() error {
 	}
 
 	if lastTradeTime.Valid {
-		lastUpdate := time.Unix(lastTradeTime.Int64, 0)
+		lastUpdate := time.Unix(int64(lastTradeTime.Float64), 0)
 		if time.Since(lastUpdate) > 10*time.Minute {
 			s.logger.Warn("No recent database activity detected",
 				zap.Time("last_update", lastUpdate))

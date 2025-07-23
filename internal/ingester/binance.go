@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/ashmitsharp/trading/internal/db"
 	"github.com/ashmitsharp/trading/internal/models"
 	"github.com/gorilla/websocket"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 )
 
@@ -242,12 +242,12 @@ func (bi *BinanceIngester) processMessage(message []byte) error {
 
 // parseTradeEvent converts Binance trade event to internal trade data
 func (bi *BinanceIngester) parseTradeEvent(event models.BinanceTradeEvent) (db.TradeData, error) {
-	price, err := strconv.ParseFloat(event.Price, 64)
+	price, err := decimal.NewFromString(event.Price)
 	if err != nil {
 		return db.TradeData{}, fmt.Errorf("failed to parse price: %w", err)
 	}
 
-	quantity, err := strconv.ParseFloat(event.Quantity, 64)
+	quantity, err := decimal.NewFromString(event.Quantity)
 	if err != nil {
 		return db.TradeData{}, fmt.Errorf("failed to parse quantity: %w", err)
 	}

@@ -55,20 +55,49 @@ func (h *OHLCVHandler) GetOHLCV(c *gin.Context) {
 		return
 	}
 
-	// Parse query parameters
-	params, err := h.parseOHLCVParams(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:     "invalid_parameters",
-			Message:   err.Error(),
-			Code:      http.StatusBadRequest,
-			Timestamp: time.Now().Unix(),
-		})
-		return
+	// New: Check for 'minutes' param
+	minutesStr := c.Query("minutes")
+	var from, to int64
+	now := time.Now().Unix()
+	if minutesStr != "" {
+		minutes, err := strconv.Atoi(minutesStr)
+		if err != nil || minutes <= 0 {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{
+				Error:     "invalid_minutes",
+				Message:   "Minutes must be a positive integer",
+				Code:      http.StatusBadRequest,
+				Timestamp: time.Now().Unix(),
+			})
+			return
+		}
+		from = now - int64(minutes*60)
+		to = now
+	} else {
+		// Fallback to existing logic (parse 'from' and 'to' from query)
+		params, err := h.parseOHLCVParams(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{
+				Error:     "invalid_parameters",
+				Message:   err.Error(),
+				Code:      http.StatusBadRequest,
+				Timestamp: time.Now().Unix(),
+			})
+			return
+		}
+		from = params.From
+		to = params.To
+	}
+
+	// Parse interval and limit as before
+	interval := c.DefaultQuery("interval", "1h")
+	limitStr := c.DefaultQuery("limit", "100")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 || limit > 1000 {
+		limit = 100
 	}
 
 	// Validate time range
-	if params.To <= params.From {
+	if to <= from {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:     "invalid_time_range",
 			Message:   "End time must be after start time",
@@ -79,8 +108,8 @@ func (h *OHLCVHandler) GetOHLCV(c *gin.Context) {
 	}
 
 	// Check if time range is not too large
-	maxRange := h.getMaxTimeRange(params.Interval)
-	if params.To-params.From > maxRange {
+	maxRange := h.getMaxTimeRange(interval)
+	if to-from > maxRange {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:     "time_range_too_large",
 			Message:   "Time range exceeds maximum allowed for this interval",
@@ -94,15 +123,15 @@ func (h *OHLCVHandler) GetOHLCV(c *gin.Context) {
 	ohlcvData, err := db.GetOHLCVData(
 		h.clickhouseConn,
 		symbol,
-		params.From*1000, // Convert to milliseconds
-		params.To*1000,
-		params.Interval,
+		from, // Convert to milliseconds
+		to,
+		interval,
 	)
 	if err != nil {
 		h.logger.Error("Failed to get OHLCV data",
 			zap.Error(err),
 			zap.String("symbol", symbol),
-			zap.String("interval", params.Interval))
+			zap.String("interval", interval))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:     "database_error",
 			Message:   "Failed to retrieve OHLCV data",
@@ -136,8 +165,8 @@ func (h *OHLCVHandler) GetOHLCV(c *gin.Context) {
 	}
 
 	// Apply limit if specified
-	if params.Limit > 0 && len(ohlcvData) > params.Limit {
-		ohlcvData = ohlcvData[:params.Limit]
+	if limit > 0 && len(ohlcvData) > limit {
+		ohlcvData = ohlcvData[:limit]
 	}
 
 	// Convert to response format
@@ -145,14 +174,14 @@ func (h *OHLCVHandler) GetOHLCV(c *gin.Context) {
 	for _, data := range ohlcvData {
 		response = append(response, models.OHLCVResponse{
 			Symbol:      data.Symbol,
-			Interval:    params.Interval,
+			Interval:    interval,
 			Timestamp:   data.Timestamp / 1000, // Convert back to seconds
-			Open:        data.Open,
-			High:        data.High,
-			Low:         data.Low,
-			Close:       data.Close,
-			Volume:      data.Volume,
-			TradesCount: data.TradesCount,
+			Open:        data.Open.InexactFloat64(),
+			High:        data.High.InexactFloat64(),
+			Low:         data.Low.InexactFloat64(),
+			Close:       data.Close.InexactFloat64(),
+			Volume:      data.Volume.InexactFloat64(),
+			TradesCount: int64(data.TradesCount),
 		})
 	}
 
