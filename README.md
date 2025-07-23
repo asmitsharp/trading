@@ -174,16 +174,3 @@ docker run --rm -p 8080:8080 trading-backend:latest
 - Extend API by adding new handlers/routes in `internal/handler/`.
 
 ---
-
-## Contribution Guidelines
-
-1. Fork the repo and create a feature branch.
-2. Write clear, well-documented code and tests.
-3. Run `make test` and ensure all tests pass.
-4. Open a pull request with a clear description.
-
----
-
-## License
-
-This project is licensed under the Apache 2.0 License.
