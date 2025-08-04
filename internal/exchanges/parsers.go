@@ -110,7 +110,16 @@ func (p *CoinbaseStyleParser) ParseTickers(data []byte, exchangeID string) ([]Ti
 			continue
 		}
 
-		stats := product["stats"].(map[string]interface{})
+		// Safely check if stats exists and is a map
+		statsInterface, ok := product["stats"]
+		if !ok || statsInterface == nil {
+			continue
+		}
+		stats, ok := statsInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
 		symbol := getStringField(product, "id")
 		base, quote := p.ParseSymbolPair(symbol, "BTC-USD")
 
