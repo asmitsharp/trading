@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the Go app (adjust the output binary name as needed)
-RUN CGO_ENABLED=0 GOOS=linux go build -o trading ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o trading ./cmd/main_rest.go
 
 # ---- Run Stage ----
 FROM alpine:latest

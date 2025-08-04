@@ -1,7 +1,12 @@
 {
     "cSpell.words": [
+        "ashmitsharp",
         "Clickhouse",
+        "godotenv",
+        "gonic",
         "Ingester",
-        "OHLCV"
+        "joho",
+        "OHLCV",
+        "swaggo"
     ]
 }
