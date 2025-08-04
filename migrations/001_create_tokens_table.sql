@@ -1,9 +1,6 @@
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 -- Main tokens table (denormalized for performance)
 CREATE TABLE IF NOT EXISTS tokens (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id SERIAL PRIMARY KEY,
     symbol VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     contract_address TEXT,
