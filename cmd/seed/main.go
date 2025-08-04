@@ -318,8 +318,13 @@ func insertToken(tx *sql.Tx, token TokenMetadata, contract *Contract, verbose bo
 	if verbose {
 		if contract != nil {
 			if inserted {
+				// Safely truncate contract address for display
+				displayAddr := contract.ContractAddress
+				if len(displayAddr) > 10 {
+					displayAddr = displayAddr[:10] + "..."
+				}
 				fmt.Printf("  ✓ Inserted contract token: %s on %s (%s)\n",
-					token.Symbol, contract.ContractPlatform, contract.ContractAddress[:10]+"...")
+					token.Symbol, contract.ContractPlatform, displayAddr)
 			} else {
 				fmt.Printf("  → Updated contract token: %s on %s\n",
 					token.Symbol, contract.ContractPlatform)
