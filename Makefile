@@ -138,14 +138,24 @@ deploy: ## Deploy to production (example)
 	@docker-compose -f docker-compose.prod.yml up -d --build
 	@echo "Production deployment complete"
 
-# Database migration (example)
+# Database migration
 migrate-up: ## Run database migrations up
 	@echo "Running database migrations..."
-	@echo "Migrations not yet implemented"
+	@go run cmd/migrate/main.go -path migrations -dir up -v
 
 migrate-down: ## Run database migrations down
 	@echo "Rolling back database migrations..."
-	@echo "Migrations not yet implemented"
+	@go run cmd/migrate/main.go -path migrations -dir down -v
+
+# Seed database with token data
+seed-tokens: ## Seed tokens from JSON file
+	@echo "Seeding tokens from configs/tokens.json..."
+	@go run cmd/seed/main.go -file configs/tokens.json -v
+	@echo "Token seeding complete"
+
+# Run migrations and seed data
+db-setup: migrate-up seed-tokens ## Run migrations and seed initial data
+	@echo "Database setup complete"
 
 # Performance benchmarks
 benchmark: ## Run performance benchmarks

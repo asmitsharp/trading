@@ -19,6 +19,7 @@ graph TD
   G[Scheduler] -->|Token Updates, Cleanup| D
   G -->|Health Checks| C
   G -->|Health Checks| D
+  H[Token Seeder] -->|Initial Data| D
 ```
 
 ---
@@ -128,6 +129,15 @@ Base path: `/api/v1`
 make build
 make run
 
+# Run database migrations
+make migrate-up
+
+# Seed initial token data
+make seed-tokens
+
+# Or run both migrations and seeding
+make db-setup
+
 # Run tests
 make test
 
@@ -145,6 +155,27 @@ docker-compose up --build
 # Stop services
 docker-compose down
 ```
+
+### Database Setup
+
+The project includes a token seeding utility that loads cryptocurrency metadata from `configs/tokens.json`:
+
+```sh
+# Run migrations first (creates tables)
+make migrate-up
+
+# Seed token data from JSON file
+make seed-tokens
+
+# Or use the combined command
+make db-setup
+```
+
+The seeder supports:
+- Native tokens (BTC, ETH, etc.)
+- Contract tokens (wrapped/bridged versions on different chains)
+- Automatic duplicate handling with UPSERT operations
+- Metadata including URLs, categories, and supply information
 
 ### Production Build
 

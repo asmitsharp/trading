@@ -1,0 +1,14 @@
+{
+  "name": "trading-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trading platform commit linting setup",
+  "scripts": {
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^18.4.3",
+    "@commitlint/config-conventional": "^18.4.3",
+    "husky": "^8.0.3"
+  }
+}
