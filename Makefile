@@ -179,7 +179,7 @@ migrate-reset: ## Reset all migrations (careful!)
 # Seed database with token data
 seed-tokens: ## Seed tokens from JSON file
 	@echo "Seeding tokens from configs/tokens.json..."
-	@go run cmd/seed/main.go -file configs/tokens.json -v
+	@go run cmd/seed/main.go configs/tokens.json
 	@echo "Token seeding complete"
 
 seed-symbols: ## Seed symbol mappings for exchanges
