@@ -11,7 +11,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
-//go:embed sql/*.sql
+//go:embed
 var migrationFiles embed.FS
 
 // RunMigrations applies all pending migrations

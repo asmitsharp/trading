@@ -3,14 +3,11 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 
-	"github.com/joho/godotenv"
-	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
 
@@ -25,9 +22,6 @@ type TokenMetadata struct {
 	IsInfiniteMaxSupply int        `json:"isInfiniteMaxSupply"`
 	URLs                TokenURLs  `json:"urls"`
 	Contracts           []Contract `json:"contracts"`
-	Decimals            int        `json:"decimals"`
-	Categories          []string   `json:"categories"`
-	MarketCapRank       *int       `json:"marketCapRank"`
 }
 
 type TokenURLs struct {
@@ -48,30 +42,14 @@ type Contract struct {
 	ContractRpcURL   []string `json:"contractRpcUrl"`
 }
 
+// Database connection using environment variables
+
 func main() {
-	// Load .env file
-	godotenv.Load()
-
-	// Parse command line flags
-	var (
-		jsonFile = flag.String("file", "", "Path to JSON file containing token data")
-		verbose  = flag.Bool("v", false, "Verbose output")
-		help     = flag.Bool("h", false, "Show help")
-	)
-	flag.Parse()
-
-	if *help || *jsonFile == "" {
-		fmt.Println("Token Seeder - Import token data from JSON into PostgreSQL")
-		fmt.Println("\nUsage:")
-		fmt.Println("  go run cmd/seed/main.go -file <path_to_json>")
-		fmt.Println("\nOptions:")
-		fmt.Println("  -file string    Path to JSON file containing token data (required)")
-		fmt.Println("  -v              Verbose output")
-		fmt.Println("  -h              Show this help message")
-		fmt.Println("\nExample:")
-		fmt.Println("  go run cmd/seed/main.go -file configs/tokens.json")
-		os.Exit(0)
+	if len(os.Args) < 2 {
+		log.Fatal("Usage: go run main.go <json_file_path>")
 	}
+
+	jsonFilePath := os.Args[1]
 
 	// Connect to database
 	db, err := connectDB()
@@ -80,28 +58,32 @@ func main() {
 	}
 	defer db.Close()
 
-	fmt.Println("✓ Connected to database")
+	// Create unique constraint on symbol only
+	err = createUniqueConstraint(db)
+	if err != nil {
+		log.Printf("Warning: Could not create unique constraint: %v", err)
+	}
 
 	// Read and parse JSON file
-	tokens, err := readTokensFromFile(*jsonFile)
+	tokens, err := readTokensFromFile(jsonFilePath)
 	if err != nil {
 		log.Fatal("Failed to read tokens from file:", err)
 	}
 
-	fmt.Printf("✓ Loaded %d tokens from %s\n", len(tokens), *jsonFile)
-
-	// Create unique index if it doesn't exist
-	if err := createUniqueConstraint(db); err != nil {
-		log.Fatal("Failed to create unique constraint:", err)
-	}
-
 	// Seed tokens into database
-	err = seedTokens(db, tokens, *verbose)
+	err = seedTokens(db, tokens)
 	if err != nil {
 		log.Fatal("Failed to seed tokens:", err)
 	}
 
-	fmt.Printf("\n✓ Successfully processed %d tokens\n", len(tokens))
+	fmt.Printf("Successfully processed %d tokens\n", len(tokens))
+}
+
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func connectDB() (*sql.DB, error) {
@@ -128,11 +110,17 @@ func connectDB() (*sql.DB, error) {
 	return db, nil
 }
 
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+func createUniqueConstraint(db *sql.DB) error {
+	// Create unique constraint on symbol only - one entry per token
+	query := `CREATE UNIQUE INDEX IF NOT EXISTS idx_tokens_unique_symbol ON tokens(symbol)`
+
+	_, err := db.Exec(query)
+	if err != nil {
+		return fmt.Errorf("error creating unique constraint: %v", err)
 	}
-	return defaultValue
+
+	fmt.Println("✓ Ensured unique constraint on symbol exists")
+	return nil
 }
 
 func readTokensFromFile(filePath string) ([]TokenMetadata, error) {
@@ -156,24 +144,7 @@ func readTokensFromFile(filePath string) ([]TokenMetadata, error) {
 	return tokens, nil
 }
 
-func createUniqueConstraint(db *sql.DB) error {
-	// Create a unique constraint on symbol + contract_address + chain combination
-	// This prevents duplicate entries for the same token
-	query := `
-		CREATE UNIQUE INDEX IF NOT EXISTS idx_tokens_unique_symbol_contract_chain 
-		ON tokens(symbol, COALESCE(contract_address, ''), COALESCE(chain, ''))
-	`
-	
-	_, err := db.Exec(query)
-	if err != nil {
-		return fmt.Errorf("error creating unique index: %v", err)
-	}
-	
-	fmt.Println("✓ Ensured unique constraint exists")
-	return nil
-}
-
-func seedTokens(db *sql.DB, tokens []TokenMetadata, verbose bool) error {
+func seedTokens(db *sql.DB, tokens []TokenMetadata) error {
 	// Begin transaction
 	tx, err := db.Begin()
 	if err != nil {
@@ -181,34 +152,19 @@ func seedTokens(db *sql.DB, tokens []TokenMetadata, verbose bool) error {
 	}
 	defer tx.Rollback()
 
-	successCount := 0
-	skipCount := 0
+	insertedCount := 0
+	updatedCount := 0
 
-	// Process each token
 	for _, token := range tokens {
-		// Insert main/native token
-		inserted, err := insertToken(tx, token, nil, verbose)
+		wasUpdate, err := insertToken(tx, token)
 		if err != nil {
 			return fmt.Errorf("error inserting token %s: %v", token.Symbol, err)
 		}
-		if inserted {
-			successCount++
-		} else {
-			skipCount++
-		}
 
-		// Process contract tokens (wrapped/bridged versions)
-		for _, contract := range token.Contracts {
-			inserted, err := insertToken(tx, token, &contract, verbose)
-			if err != nil {
-				return fmt.Errorf("error inserting contract token %s on %s: %v",
-					token.Symbol, contract.ContractPlatform, err)
-			}
-			if inserted {
-				successCount++
-			} else {
-				skipCount++
-			}
+		if wasUpdate {
+			updatedCount++
+		} else {
+			insertedCount++
 		}
 	}
 
@@ -218,133 +174,97 @@ func seedTokens(db *sql.DB, tokens []TokenMetadata, verbose bool) error {
 		return fmt.Errorf("error committing transaction: %v", err)
 	}
 
-	fmt.Printf("\n✓ Inserted/Updated: %d tokens\n", successCount)
-	if skipCount > 0 {
-		fmt.Printf("✓ Unchanged: %d tokens\n", skipCount)
-	}
-
+	fmt.Printf("✓ Inserted: %d new tokens, Updated: %d existing tokens\n", insertedCount, updatedCount)
 	return nil
 }
 
-func insertToken(tx *sql.Tx, token TokenMetadata, contract *Contract, verbose bool) (bool, error) {
-	// Prepare metadata
-	metadata := createMetadata(token)
-	
-	// Add contract-specific metadata if this is a contract token
-	var contractAddress, chain *string
-	if contract != nil {
-		contractAddress = &contract.ContractAddress
-		chain = &contract.ContractPlatform
-		metadata["contract_info"] = map[string]interface{}{
-			"rpc_urls":        contract.ContractRpcURL,
-			"contract_number": contract.No,
-		}
-	}
-
+func insertToken(tx *sql.Tx, token TokenMetadata) (bool, error) {
+	// Create comprehensive metadata that includes ALL information
+	metadata := createTokenMetadata(token)
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return false, fmt.Errorf("error marshaling metadata: %v", err)
 	}
 
-	// Prepare categories for PostgreSQL array
-	var categories interface{}
-	if len(token.Categories) > 0 {
-		categories = pq.Array(token.Categories)
-	} else {
-		categories = pq.Array([]string{})
-	}
+	// Leave contract_address and chain as NULL since we store everything in metadata
+	query := `
+		INSERT INTO tokens (
+			symbol, name, contract_address, chain,
+			circulating_supply, total_supply, max_supply,
+			metadata, is_active
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (symbol)
+		DO UPDATE SET
+			name = EXCLUDED.name,
+			circulating_supply = EXCLUDED.circulating_supply,
+			total_supply = EXCLUDED.total_supply,
+			max_supply = EXCLUDED.max_supply,
+			metadata = EXCLUDED.metadata,
+			updated_at = NOW()
+		WHERE tokens.symbol = EXCLUDED.symbol
+	`
 
-	// Handle max supply
 	var maxSupply *float64
 	if token.MaxSupply != nil && token.IsInfiniteMaxSupply == 0 {
 		maxSupply = token.MaxSupply
 	}
 
-	// Use default decimals if not specified
-	decimals := token.Decimals
-	if decimals == 0 {
-		// Set default decimals based on common tokens
-		switch token.Symbol {
-		case "BTC":
-			decimals = 8
-		case "ETH", "USDC", "USDT":
-			decimals = 18
-		default:
-			decimals = 18
-		}
-	}
-
-	// Use UPSERT to handle duplicates gracefully
-	query := `
-		INSERT INTO tokens (
-			symbol, name, contract_address, chain, decimals,
-			circulating_supply, total_supply, max_supply,
-			market_cap_rank, categories, metadata, is_active
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		ON CONFLICT (symbol, COALESCE(contract_address, ''), COALESCE(chain, ''))
-		DO UPDATE SET
-			name = EXCLUDED.name,
-			decimals = EXCLUDED.decimals,
-			circulating_supply = EXCLUDED.circulating_supply,
-			total_supply = EXCLUDED.total_supply,
-			max_supply = EXCLUDED.max_supply,
-			market_cap_rank = COALESCE(EXCLUDED.market_cap_rank, tokens.market_cap_rank),
-			categories = EXCLUDED.categories,
-			metadata = tokens.metadata || EXCLUDED.metadata,
-			updated_at = NOW()
-		RETURNING (xmax = 0) AS inserted
-	`
-
-	var inserted bool
-	err = tx.QueryRow(query,
+	result, err := tx.Exec(query,
 		token.Symbol,
 		token.Name,
-		contractAddress,
-		chain,
-		decimals,
+		nil, // contract_address stays NULL
+		nil, // chain stays NULL
 		token.CirculatingSupply,
 		token.TotalSupply,
 		maxSupply,
-		token.MarketCapRank,
-		categories,
 		string(metadataJSON),
 		true,
-	).Scan(&inserted)
+	)
 
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("error executing token insert: %v", err)
 	}
 
-	if verbose {
-		if contract != nil {
-			if inserted {
-				// Safely truncate contract address for display
-				displayAddr := contract.ContractAddress
-				if len(displayAddr) > 10 {
-					displayAddr = displayAddr[:10] + "..."
-				}
-				fmt.Printf("  ✓ Inserted contract token: %s on %s (%s)\n",
-					token.Symbol, contract.ContractPlatform, displayAddr)
-			} else {
-				fmt.Printf("  → Updated contract token: %s on %s\n",
-					token.Symbol, contract.ContractPlatform)
+	// Check if this was an update or insert
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("error getting rows affected: %v", err)
+	}
+
+	isUpdate := rowsAffected == 0 // ON CONFLICT DO UPDATE doesn't count as affected rows in some cases
+
+	// Check if token already existed by trying to get the ID
+	var existingID int
+	checkQuery := `SELECT id FROM tokens WHERE symbol = $1`
+	err = tx.QueryRow(checkQuery, token.Symbol).Scan(&existingID)
+	isUpdate = (err == nil && existingID > 0)
+
+	fmt.Printf("✓ %s: %s (%s) - %d contracts, %d URLs\n",
+		map[bool]string{true: "Updated", false: "Inserted"}[isUpdate],
+		token.Name,
+		token.Symbol,
+		len(token.Contracts),
+		countURLs(token.URLs))
+
+	// Log contract summary
+	if len(token.Contracts) > 0 {
+		fmt.Printf("  Contracts: ")
+		for i, contract := range token.Contracts {
+			if i > 0 {
+				fmt.Printf(", ")
 			}
-		} else {
-			if inserted {
-				fmt.Printf("✓ Inserted native token: %s (%s)\n", token.Name, token.Symbol)
-			} else {
-				fmt.Printf("→ Updated native token: %s (%s)\n", token.Name, token.Symbol)
-			}
+			fmt.Printf("%s", contract.ContractPlatform)
 		}
+		fmt.Println()
 	}
 
-	return inserted, nil
+	return isUpdate, nil
 }
 
-func createMetadata(token TokenMetadata) map[string]interface{} {
+func createTokenMetadata(token TokenMetadata) map[string]interface{} {
 	metadata := make(map[string]interface{})
 
-	// Add URLs if they exist
+	// Add all URLs to metadata
 	urls := make(map[string]interface{})
 	if len(token.URLs.Website) > 0 {
 		urls["website"] = token.URLs.Website
@@ -375,9 +295,74 @@ func createMetadata(token TokenMetadata) map[string]interface{} {
 		metadata["urls"] = urls
 	}
 
-	// Add other metadata
+	// Add all contracts to metadata
+	if len(token.Contracts) > 0 {
+		contracts := make([]map[string]interface{}, len(token.Contracts))
+		for i, contract := range token.Contracts {
+			contracts[i] = map[string]interface{}{
+				"contract_address": contract.ContractAddress,
+				"platform":         contract.ContractPlatform,
+				"rpc_urls":         contract.ContractRpcURL,
+				"number":           contract.No,
+			}
+		}
+		metadata["contracts"] = contracts
+	}
+
+	// Add other token metadata
 	metadata["slug"] = token.Slug
 	metadata["is_infinite_max_supply"] = token.IsInfiniteMaxSupply == 1
 
 	return metadata
+}
+
+func countURLs(urls TokenURLs) int {
+	count := 0
+	count += len(urls.Website)
+	count += len(urls.TechnicalDoc)
+	count += len(urls.Explorer)
+	count += len(urls.SourceCode)
+	count += len(urls.Reddit)
+	count += len(urls.Chat)
+	count += len(urls.Announcement)
+	count += len(urls.Twitter)
+	return count
+}
+
+// Helper function to display token information after seeding
+func displayTokenInfo(db *sql.DB, symbol string) error {
+	query := `
+		SELECT 
+			symbol, 
+			name, 
+			circulating_supply,
+			total_supply,
+			max_supply,
+			jsonb_pretty(metadata) as metadata_json
+		FROM tokens 
+		WHERE symbol = $1
+	`
+
+	var tokenSymbol, tokenName string
+	var circSupply, totalSupply sql.NullFloat64
+	var maxSupply sql.NullFloat64
+	var metadataJSON string
+
+	err := db.QueryRow(query, symbol).Scan(
+		&tokenSymbol, &tokenName, &circSupply, &totalSupply, &maxSupply, &metadataJSON)
+	if err != nil {
+		return fmt.Errorf("error querying token: %v", err)
+	}
+
+	fmt.Printf("\n=== %s (%s) ===\n", tokenName, tokenSymbol)
+	fmt.Printf("Circulating Supply: %.0f\n", circSupply.Float64)
+	fmt.Printf("Total Supply: %.0f\n", totalSupply.Float64)
+	if maxSupply.Valid {
+		fmt.Printf("Max Supply: %.0f\n", maxSupply.Float64)
+	} else {
+		fmt.Printf("Max Supply: Unlimited\n")
+	}
+	fmt.Printf("\nMetadata:\n%s\n", metadataJSON)
+
+	return nil
 }

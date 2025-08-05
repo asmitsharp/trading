@@ -138,14 +138,43 @@ deploy: ## Deploy to production (example)
 	@docker-compose -f docker-compose.prod.yml up -d --build
 	@echo "Production deployment complete"
 
-# Database migration
-migrate-up: ## Run database migrations up
-	@echo "Running database migrations..."
-	@go run cmd/migrate/main.go -path migrations -dir up -v
+# PostgreSQL migrations
+migrate-postgres-up: ## Run PostgreSQL migrations up
+	@echo "Running PostgreSQL migrations..."
+	@go run cmd/migrate/migrate.go -db=postgres -dir=up
 
-migrate-down: ## Run database migrations down
-	@echo "Rolling back database migrations..."
-	@go run cmd/migrate/main.go -path migrations -dir down -v
+migrate-postgres-down: ## Rollback PostgreSQL migrations
+	@echo "Rolling back PostgreSQL migrations..."
+	@go run cmd/migrate/migrate.go -db=postgres -dir=down -steps=1
+
+migrate-postgres-version: ## Check PostgreSQL migration version
+	@go run cmd/migrate/migrate.go -db=postgres -version
+
+# ClickHouse migrations
+migrate-clickhouse-up: ## Run ClickHouse migrations up
+	@echo "Running ClickHouse migrations..."
+	@go run cmd/migrate/migrate.go -db=clickhouse -dir=up
+
+migrate-clickhouse-down: ## Rollback ClickHouse migrations
+	@echo "Rolling back ClickHouse migrations..."
+	@go run cmd/migrate/migrate.go -db=clickhouse -dir=down -steps=1
+
+migrate-clickhouse-version: ## Check ClickHouse migration version
+	@go run cmd/migrate/migrate.go -db=clickhouse -version
+
+# Run all migrations
+migrate-up: migrate-postgres-up migrate-clickhouse-up ## Run all database migrations up
+
+migrate-down: ## Rollback last migration for both databases
+	@echo "Rolling back migrations..."
+	@go run cmd/migrate/migrate.go -db=postgres -dir=down -steps=1
+	@go run cmd/migrate/migrate.go -db=clickhouse -dir=down -steps=1
+
+migrate-reset: ## Reset all migrations (careful!)
+	@echo "Resetting all migrations..."
+	@go run cmd/migrate/migrate.go -db=postgres -dir=down
+	@go run cmd/migrate/migrate.go -db=clickhouse -dir=down
+	@$(MAKE) migrate-up
 
 # Seed database with token data
 seed-tokens: ## Seed tokens from JSON file
@@ -153,8 +182,13 @@ seed-tokens: ## Seed tokens from JSON file
 	@go run cmd/seed/main.go -file configs/tokens.json -v
 	@echo "Token seeding complete"
 
+seed-symbols: ## Seed symbol mappings for exchanges
+	@echo "Seeding symbol mappings..."
+	@go run cmd/seed-symbols/main.go
+	@echo "Symbol mapping seeding complete"
+
 # Run migrations and seed data
-db-setup: migrate-up seed-tokens ## Run migrations and seed initial data
+db-setup: migrate-up seed-tokens seed-symbols ## Run migrations and seed initial data
 	@echo "Database setup complete"
 
 # Performance benchmarks

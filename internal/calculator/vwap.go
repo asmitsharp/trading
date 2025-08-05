@@ -24,18 +24,20 @@ func NewVWAPCalculator(logger *zap.Logger) *VWAPCalculator {
 
 // PriceData represents price and volume data from an exchange
 type PriceData struct {
-	ExchangeID string
-	Symbol     string
-	Price      decimal.Decimal
-	Volume     decimal.Decimal
-	Weight     decimal.Decimal // Exchange weight for calculation
-	Timestamp  time.Time
+	ExchangeID   string
+	Symbol       string
+	BaseTokenID  int
+	QuoteTokenID int
+	Price        decimal.Decimal
+	Volume       decimal.Decimal
+	Weight       decimal.Decimal // Exchange weight for calculation
+	Timestamp    time.Time
 }
 
 // VWAPResult represents the calculated VWAP price
 type VWAPResult struct {
-	BaseTokenID          string
-	QuoteTokenID         string
+	BaseTokenID          int
+	QuoteTokenID         int
 	VWAPPrice            decimal.Decimal
 	TotalVolume          decimal.Decimal
 	ExchangeCount        int
@@ -77,8 +79,8 @@ func (v *VWAPCalculator) Calculate(prices []PriceData) (*VWAPResult, error) {
 	result := v.calculateVWAP(cleanPrices)
 	
 	v.logger.Debug("VWAP calculated",
-		zap.String("base_token", result.BaseTokenID),
-		zap.String("quote_token", result.QuoteTokenID),
+		zap.Int("base_token_id", result.BaseTokenID),
+		zap.Int("quote_token_id", result.QuoteTokenID),
 		zap.String("vwap_price", result.VWAPPrice.String()),
 		zap.Int("exchanges", result.ExchangeCount))
 
@@ -211,8 +213,8 @@ func (v *VWAPCalculator) calculateVWAP(prices []PriceData) *VWAPResult {
 	vwapPrice = vwapPrice.Round(8)
 
 	return &VWAPResult{
-		BaseTokenID:           prices[0].Symbol, // Will be updated by caller
-		QuoteTokenID:          "",               // Will be updated by caller
+		BaseTokenID:           prices[0].BaseTokenID,
+		QuoteTokenID:          prices[0].QuoteTokenID,
 		VWAPPrice:             vwapPrice,
 		TotalVolume:           totalVolume,
 		ExchangeCount:         len(exchangeMap),

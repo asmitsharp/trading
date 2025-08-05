@@ -110,9 +110,9 @@ func (app *Application) initDatabases() error {
 	// Initialize PostgreSQL
 	pgHost := getEnv("POSTGRES_HOST", "localhost")
 	pgPort := getEnv("POSTGRES_PORT", "5432")
-	pgUser := getEnv("POSTGRES_USERNAME", "crypto_user")
+	pgUser := getEnv("POSTGRES_USER", "crypto_user")
 	pgPass := getEnv("POSTGRES_PASSWORD", "crypto_password")
-	pgDB := getEnv("POSTGRES_DATABASE", "crypto_platform")
+	pgDB := getEnv("POSTGRES_DB", "crypto_platform")
 
 	pgDSN := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		pgHost, pgPort, pgUser, pgPass, pgDB)
@@ -131,15 +131,17 @@ func (app *Application) initDatabases() error {
 
 	// Initialize ClickHouse
 	chHost := getEnv("CLICKHOUSE_HOST", "localhost")
-	chPort := getEnv("CLICKHOUSE_PORT", "9000")
+	chPort := getEnv("CLICKHOUSE_PORT", "9001")
 	chDB := getEnv("CLICKHOUSE_DATABASE", "crypto_platform")
+	chUser := getEnv("CLICKHOUSE_USER", "default")
+	chPassword := getEnv("CLICKHOUSE_PASSWORD", "clickhouse123")
 
 	clickhouseDB, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{fmt.Sprintf("%s:%s", chHost, chPort)},
 		Auth: clickhouse.Auth{
 			Database: chDB,
-			Username: "default",
-			Password: "",
+			Username: chUser,
+			Password: chPassword,
 		},
 		Settings: clickhouse.Settings{
 			"max_execution_time": 60,

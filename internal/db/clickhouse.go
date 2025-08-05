@@ -13,6 +13,9 @@ import (
 
 // InitClickHouse initializes ClickHouse connection and creates necessary tables
 func InitClickHouse(cfg config.ClickhouseConfig) (driver.Conn, error) {
+	fmt.Printf("Connecting to ClickHouse: Host=%s, Port=%d, DB=%s, User=%s, Password=%s\n", 
+		cfg.Host, cfg.Port, cfg.Database, cfg.Username, cfg.Password)
+	
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)},
 		Auth: clickhouse.Auth{

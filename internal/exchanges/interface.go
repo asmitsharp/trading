@@ -26,6 +26,8 @@ type TickerData struct {
 	Symbol         string          `json:"symbol"`
 	BaseSymbol     string          `json:"base_symbol"`
 	QuoteSymbol    string          `json:"quote_symbol"`
+	BaseTokenID    int             `json:"base_token_id"`    // Added token ID
+	QuoteTokenID   int             `json:"quote_token_id"`   // Added token ID
 	Price          decimal.Decimal `json:"price"`
 	Volume24h      decimal.Decimal `json:"volume_24h"`
 	QuoteVolume24h decimal.Decimal `json:"quote_volume_24h"`
