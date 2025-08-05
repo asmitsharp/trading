@@ -1,0 +1,1 @@
+DROP VIEW IF EXISTS exchange_health_stats
