@@ -232,26 +232,59 @@ func (b *BaseParser) ParseSymbolPair(symbol string, format string) (base, quote 
 		symbol = strings.ReplaceAll(symbol, "XXBT", "BTC")
 		symbol = strings.ReplaceAll(symbol, "ZUSD", "USD")
 		symbol = strings.ReplaceAll(symbol, "ZEUR", "EUR")
+		symbol = strings.ReplaceAll(symbol, "XETH", "ETH")
+		symbol = strings.ReplaceAll(symbol, "XXRP", "XRP")
 	}
 
-	// Try to match against known quote currencies
+	// Handle special cases
 	upperSymbol := strings.ToUpper(symbol)
-	for _, quote := range b.quoteCurrencies {
-		if strings.HasSuffix(upperSymbol, quote) {
-			base := strings.TrimSuffix(upperSymbol, quote)
-			return base, quote
+	
+	// Handle Binance special notations like 1000SATSUSDT
+	if strings.HasPrefix(upperSymbol, "1000") {
+		upperSymbol = strings.TrimPrefix(upperSymbol, "1000")
+		// Continue with normal parsing, will add 1000 back to base
+		defer func() {
+			if base != "" {
+				base = "1000" + base
+			}
+		}()
+	}
+
+	// Sort quote currencies by length (longest first) to avoid false matches
+	// e.g., match "USDT" before "USD"
+	sortedQuotes := make([]string, len(b.quoteCurrencies))
+	copy(sortedQuotes, b.quoteCurrencies)
+	for i := 0; i < len(sortedQuotes)-1; i++ {
+		for j := i + 1; j < len(sortedQuotes); j++ {
+			if len(sortedQuotes[i]) < len(sortedQuotes[j]) {
+				sortedQuotes[i], sortedQuotes[j] = sortedQuotes[j], sortedQuotes[i]
+			}
 		}
 	}
 
-	// Fallback: assume last 3-4 chars are quote
-	if len(symbol) > 6 {
-		return symbol[:len(symbol)-4], symbol[len(symbol)-4:]
+	// Try to match against known quote currencies
+	for _, q := range sortedQuotes {
+		if strings.HasSuffix(upperSymbol, q) {
+			base := strings.TrimSuffix(upperSymbol, q)
+			// Validate base is reasonable (not empty, not another quote currency)
+			if base != "" && !b.isQuoteCurrency(base) {
+				return base, q
+			}
+		}
 	}
-	if len(symbol) == 6 {
-		return symbol[:3], symbol[3:]
+
+	// Fallback: if no match found, return empty to skip this symbol
+	return "", ""
+}
+
+// isQuoteCurrency checks if a symbol is a quote currency
+func (b *BaseParser) isQuoteCurrency(symbol string) bool {
+	for _, q := range b.quoteCurrencies {
+		if symbol == q {
+			return true
+		}
 	}
-	
-	return symbol, ""
+	return false
 }
 
 // Helper function to safely parse decimal

@@ -94,13 +94,18 @@ func (v *VWAPCalculator) filterValidPrices(prices []PriceData) []PriceData {
 	for _, p := range prices {
 		// Check for valid price and volume
 		if p.Price.IsPositive() && p.Volume.IsPositive() {
-			// Additional sanity checks
-			if p.Price.LessThan(decimal.NewFromInt(1000000)) && // Max $1M per token
-			   p.Volume.LessThan(decimal.NewFromInt(1000000000)) { // Max $1B volume
+			// Basic sanity check on price
+			maxPrice := decimal.NewFromInt(100000000) // $100M per token
+			
+			// For now, just check if price is reasonable
+			// Volume validation is complex as it depends on quote currency
+			// (BTC volume of 1 is ~$100K, USDT volume of 1 is $1)
+			if p.Price.LessThanOrEqual(maxPrice) {
 				valid = append(valid, p)
 			} else {
-				v.logger.Warn("Filtered out suspicious price",
+				v.logger.Debug("Filtered out price",
 					zap.String("exchange", p.ExchangeID),
+					zap.String("symbol", p.Symbol),
 					zap.String("price", p.Price.String()),
 					zap.String("volume", p.Volume.String()))
 			}
@@ -120,8 +125,8 @@ func (v *VWAPCalculator) removeOutliers(prices []PriceData) []PriceData {
 	// Calculate median price
 	median := v.calculateMedianPrice(prices)
 	
-	// Define outlier threshold (e.g., 10% deviation from median)
-	threshold := decimal.NewFromFloat(0.10)
+	// Define outlier threshold (e.g., 50% deviation from median for crypto volatility)
+	threshold := decimal.NewFromFloat(0.50)
 	maxDeviation := median.Mul(threshold)
 	
 	cleaned := make([]PriceData, 0, len(prices))

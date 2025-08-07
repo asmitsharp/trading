@@ -16,10 +16,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 
 	"github.com/ashmitsharp/trading/internal/calculator"
 	"github.com/ashmitsharp/trading/internal/exchanges"
+	"github.com/ashmitsharp/trading/internal/storage"
 )
 
 type Application struct {
@@ -28,6 +30,8 @@ type Application struct {
 	clickhouseDB clickhouse.Conn
 	factory      *exchanges.ExchangeFactory
 	vwapCalc     *calculator.VWAPCalculator
+	priceStorage *storage.PriceStorage
+	vwapStorage  *storage.VWAPStorage
 }
 
 func main() {
@@ -63,6 +67,10 @@ func main() {
 
 	// Initialize VWAP calculator
 	app.vwapCalc = calculator.NewVWAPCalculator(logger)
+
+	// Initialize storage services
+	app.priceStorage = storage.NewPriceStorage(app.clickhouseDB, logger)
+	app.vwapStorage = storage.NewVWAPStorage(app.clickhouseDB, logger)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -252,16 +260,32 @@ func (app *Application) pollExchanges(ctx context.Context, clients map[string]ex
 		zap.Int("total", len(allPrices)),
 		zap.Int("exchanges", len(clients)))
 
+	// Store raw price tickers in ClickHouse
+	if err := app.priceStorage.StorePriceTickers(ctx, allPrices); err != nil {
+		app.logger.Error("Failed to store price tickers", zap.Error(err))
+	}
+
 	// Group prices by symbol for VWAP calculation
 	pricesBySymbol := make(map[string][]calculator.PriceData)
 	for _, ticker := range allPrices {
+		// Skip if base/quote symbols are not properly parsed
+		if ticker.BaseSymbol == "" || ticker.QuoteSymbol == "" {
+			continue
+		}
 		symbol := fmt.Sprintf("%s-%s", ticker.BaseSymbol, ticker.QuoteSymbol)
+
+		// Get exchange weight from client
+		weight := decimal.NewFromFloat(0.01) // Default weight
+		if client, ok := clients[ticker.ExchangeID]; ok {
+			weight = decimal.NewFromFloat(client.GetWeight())
+		}
+
 		pricesBySymbol[symbol] = append(pricesBySymbol[symbol], calculator.PriceData{
 			ExchangeID: ticker.ExchangeID,
 			Symbol:     ticker.Symbol,
 			Price:      ticker.Price,
 			Volume:     ticker.Volume24h,
-			Weight:     ticker.Price.Mul(ticker.Volume24h), // Simple weight calculation
+			Weight:     weight, // Use exchange weight from config
 			Timestamp:  ticker.Timestamp,
 		})
 	}
@@ -278,8 +302,10 @@ func (app *Application) storeVWAPPrices(ctx context.Context, results map[string]
 		return
 	}
 
-	// TODO: Implement batch insert to ClickHouse
-	app.logger.Info("Stored VWAP prices", zap.Int("count", len(results)))
+	// Use the storage service to store VWAP results
+	if err := app.vwapStorage.StoreVWAPResults(ctx, results); err != nil {
+		app.logger.Error("Failed to store VWAP results", zap.Error(err))
+	}
 }
 
 func (app *Application) runAPI(ctx context.Context, wg *sync.WaitGroup) {
