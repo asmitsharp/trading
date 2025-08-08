@@ -187,6 +187,11 @@ seed-symbols: ## Seed symbol mappings for exchanges
 	@go run cmd/seed-symbols/main.go
 	@echo "Symbol mapping seeding complete"
 
+map-exchange-symbols: ## Map exchange symbols to unified token IDs
+	@echo "Mapping exchange symbols to unified token IDs..."
+	@go run cmd/mapper/main.go
+	@echo "Exchange symbol mapping complete"
+
 # Run migrations and seed data
 db-setup: migrate-up seed-tokens seed-symbols ## Run migrations and seed initial data
 	@echo "Database setup complete"
