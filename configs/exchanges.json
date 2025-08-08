@@ -7,11 +7,31 @@
       "ticker_endpoint": "/api/v3/ticker/24hr",
       "symbols_endpoint": "/api/v3/exchangeInfo",
       "rate_limit_per_minute": 1200,
-      "weight": 0.35,
-      "request_timeout": 5000,
+      "weight": 0.08,
+      "request_timeout": 15000,
       "retry_attempts": 3,
       "symbol_format": "BTCUSDT",
-      "quote_currencies": ["USDT", "USDC", "USD", "BUSD", "FDUSD", "BTC", "ETH", "BNB", "EUR", "GBP", "TRY", "BRL", "MXN", "ARS", "ZAR", "UAH", "PLN", "DOGE", "SHIB"]
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "USD",
+        "BUSD",
+        "FDUSD",
+        "BTC",
+        "ETH",
+        "BNB",
+        "EUR",
+        "GBP",
+        "TRY",
+        "BRL",
+        "MXN",
+        "ARS",
+        "ZAR",
+        "UAH",
+        "PLN",
+        "DOGE",
+        "SHIB"
+      ]
     },
     {
       "id": "coinbase",
@@ -20,11 +40,22 @@
       "ticker_endpoint": "/products",
       "symbols_endpoint": "/products",
       "rate_limit_per_minute": 600,
-      "weight": 0.25,
-      "request_timeout": 5000,
+      "weight": 0.10,
+      "request_timeout": 15000,
       "retry_attempts": 3,
       "symbol_format": "BTC-USD",
-      "quote_currencies": ["USD", "USDT", "USDC", "EUR", "GBP", "CAD", "AUD", "JPY", "BTC", "ETH"]
+      "quote_currencies": [
+        "USD",
+        "USDT",
+        "USDC",
+        "EUR",
+        "GBP",
+        "CAD",
+        "AUD",
+        "JPY",
+        "BTC",
+        "ETH"
+      ]
     },
     {
       "id": "kraken",
@@ -33,11 +64,24 @@
       "ticker_endpoint": "/0/public/Ticker",
       "symbols_endpoint": "/0/public/AssetPairs",
       "rate_limit_per_minute": 60,
-      "weight": 0.20,
-      "request_timeout": 5000,
+      "weight": 0.05,
+      "request_timeout": 30000,
       "retry_attempts": 3,
       "symbol_format": "XXBTZUSD",
-      "quote_currencies": ["USD", "EUR", "GBP", "CAD", "JPY", "CHF", "AUD", "USDT", "USDC", "XBT", "BTC", "ETH"]
+      "quote_currencies": [
+        "USD",
+        "EUR",
+        "GBP",
+        "CAD",
+        "JPY",
+        "CHF",
+        "AUD",
+        "USDT",
+        "USDC",
+        "XBT",
+        "BTC",
+        "ETH"
+      ]
     },
     {
       "id": "okx",
@@ -45,12 +89,757 @@
       "base_url": "https://www.okx.com",
       "ticker_endpoint": "/api/v5/market/tickers?instType=SPOT",
       "symbols_endpoint": "/api/v5/public/instruments?instType=SPOT",
+      "rate_limit_per_minute": 100,
+      "weight": 0.00,
+      "request_timeout": 45000,
+      "retry_attempts": 2,
+      "symbol_format": "BTC-USDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "USD",
+        "EUR",
+        "BTC",
+        "ETH",
+        "OKB",
+        "AED"
+      ]
+    },
+    {
+      "id": "bitget",
+      "name": "Bitget",
+      "base_url": "https://api.bitget.com",
+      "ticker_endpoint": "/api/v2/spot/market/tickers",
+      "symbols_endpoint": "/api/v2/spot/public/symbols",
       "rate_limit_per_minute": 600,
-      "weight": 0.20,
-      "request_timeout": 5000,
+      "weight": 0.10,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTCUSDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "EUR",
+        "GBP",
+        "BRL",
+        "TRY"
+      ],
+      "api_version": "v2",
+      "ticker_fields": {
+        "price": "lastPr",
+        "volume": "baseVolume",
+        "quote_volume": "usdtVolume"
+      }
+    },
+    {
+      "id": "bybit",
+      "name": "Bybit",
+      "base_url": "https://api.bybit.com",
+      "ticker_endpoint": "/v5/market/tickers?category=spot",
+      "symbols_endpoint": "/v5/market/instruments-info?category=spot",
+      "rate_limit_per_minute": 600,
+      "weight": 0.10,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTCUSDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "EUR",
+        "USD",
+        "DAI"
+      ],
+      "api_version": "v5",
+      "ticker_fields": {
+        "price": "lastPrice",
+        "volume": "volume24h"
+      }
+    },
+    {
+      "id": "mexc",
+      "name": "MEXC",
+      "base_url": "https://api.mexc.com",
+      "ticker_endpoint": "/api/v3/ticker/24hr",
+      "symbols_endpoint": "/api/v3/exchangeInfo",
+      "rate_limit_per_minute": 600,
+      "weight": 0.08,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTCUSDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "MX"
+      ],
+      "api_version": "v3",
+      "ticker_fields": {
+        "price": "lastPrice",
+        "volume": "volume"
+      },
+      "symbol_filters": {
+        "status": [
+          "1",
+          "ENABLED",
+          "ONLINE"
+        ],
+        "required_flags": [
+          "isSpotTradingAllowed"
+        ],
+        "permissions": [
+          "SPOT"
+        ]
+      }
+    },
+    {
+      "id": "htx",
+      "name": "HTX (Huobi)",
+      "base_url": "https://api.huobi.pro",
+      "ticker_endpoint": "/market/tickers",
+      "symbols_endpoint": "/v1/common/symbols",
+      "rate_limit_per_minute": 600,
+      "weight": 0.08,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "btcusdt",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "HT",
+        "USD"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "close",
+        "volume": "amount"
+      },
+      "response_wrapper": "data",
+      "symbol_state_field": "state",
+      "symbol_state_active": "online",
+      "lowercase_symbols": true
+    },
+    {
+      "id": "cryptocom",
+      "name": "Crypto.com",
+      "base_url": "https://api.crypto.com",
+      "ticker_endpoint": "/v1/public/get-tickers",
+      "symbols_endpoint": "/v1/public/get-instruments",
+      "rate_limit_per_minute": 100,
+      "weight": 0.00,
+      "request_timeout": 45000,
+      "retry_attempts": 2,
+      "symbol_format": "BTCUSDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "USD",
+        "BTC",
+        "ETH",
+        "CRO",
+        "EUR",
+        "GBP"
+      ],
+      "api_version": "v2",
+      "ticker_fields": {
+        "symbol": "i",
+        "price": "a",
+        "volume": "v"
+      },
+      "fallback_api_version": "/exchange/v1",
+      "response_wrapper": "result.data",
+      "symbol_separator": "_",
+      "exclude_patterns": [
+        "-"
+      ]
+    },
+    {
+      "id": "kucoin",
+      "name": "KuCoin",
+      "base_url": "https://api.kucoin.com",
+      "ticker_endpoint": "/api/v1/market/allTickers",
+      "symbols_endpoint": "/api/v1/symbols",
+      "rate_limit_per_minute": 600,
+      "weight": 0.06,
+      "request_timeout": 30000,
       "retry_attempts": 3,
       "symbol_format": "BTC-USDT",
-      "quote_currencies": ["USDT", "USDC", "USD", "EUR", "BTC", "ETH", "OKB", "AED"]
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "KCS",
+        "USD"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "last",
+        "volume": "vol",
+        "symbol": "symbol"
+      },
+      "ticker_wrapper": "data.ticker",
+      "symbols_wrapper": "data",
+      "symbol_separator": "-",
+      "enable_trading_field": "enableTrading"
+    },
+    {
+      "id": "lbank",
+      "name": "LBank",
+      "base_url": "https://api.lbkex.com",
+      "ticker_endpoint": "/v2/ticker/24hr.do?symbol=all",
+      "symbols_endpoint": "/v2/currencyPairs.do",
+      "rate_limit_per_minute": 600,
+      "weight": 0.05,
+      "request_timeout": 15000,
+      "retry_attempts": 3,
+      "symbol_format": "btc_usdt",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH"
+      ],
+      "api_version": "v2",
+      "ticker_fields": {
+        "price": "ticker.latest",
+        "volume": "ticker.vol",
+        "symbol": "symbol"
+      },
+      "response_wrapper": "data",
+      "symbol_separator": "_",
+      "lowercase_symbols": true
+    },
+    {
+      "id": "bitmart",
+      "name": "BitMart",
+      "base_url": "https://api-cloud.bitmart.com",
+      "ticker_endpoint": "/spot/v1/ticker",
+      "symbols_endpoint": "/spot/v1/symbols",
+      "rate_limit_per_minute": 600,
+      "weight": 0.05,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTC_USDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "BMX"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "last_price",
+        "volume": "base_volume_24h",
+        "symbol": "symbol"
+      },
+      "response_wrapper": "data.tickers",
+      "symbol_separator": "_"
+    },
+    {
+      "id": "deepcoin",
+      "name": "Deepcoin",
+      "base_url": "https://api.deepcoin.com",
+      "ticker_endpoint": "/deepcoin/market/tickers?instType=SPOT",
+      "symbols_endpoint": "/deepcoin/market/instruments?instType=SPOT",
+      "rate_limit_per_minute": 600,
+      "weight": 0.04,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTC-USDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH"
+      ],
+      "api_version": "v1",
+      "headers": {
+        "User-Agent": "deepcoin-feed/1.0"
+      },
+      "ticker_fields": {
+        "price": "last",
+        "volume": "vol24h",
+        "symbol": "instId"
+      },
+      "response_wrapper": "data",
+      "symbol_separator": "-",
+      "state_field": "state",
+      "state_active": "live"
+    },
+    {
+      "id": "gateio",
+      "name": "Gate.io",
+      "base_url": "https://api.gateio.ws",
+      "ticker_endpoint": "/api/v4/spot/tickers",
+      "symbols_endpoint": "/api/v4/spot/currency_pairs",
+      "rate_limit_per_minute": 600,
+      "weight": 0.04,
+      "request_timeout": 15000,
+      "retry_attempts": 3,
+      "symbol_format": "BTC_USDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "USD",
+        "EUR"
+      ],
+      "api_version": "v4",
+      "ticker_fields": {
+        "price": "last",
+        "volume": "base_volume",
+        "symbol": "currency_pair"
+      },
+      "symbol_separator": "_",
+      "trade_status_field": "trade_status",
+      "trade_status_active": "tradable"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "base_url": "https://api.gemini.com",
+      "ticker_endpoint": "/v1/pricefeed",
+      "symbols_endpoint": "/v1/symbols",
+      "rate_limit_per_minute": 60,
+      "weight": 0.03,
+      "request_timeout": 15000,
+      "retry_attempts": 3,
+      "symbol_format": "btcusdt",
+      "quote_currencies": [
+        "USDT",
+        "USD",
+        "BTC",
+        "ETH",
+        "EUR",
+        "GBP",
+        "SGD"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "price",
+        "symbol": "pair"
+      },
+      "lowercase_symbols": true,
+      "per_symbol_endpoint": false,
+      "rate_limit_delay": 100
+    },
+    {
+      "id": "whitebit",
+      "name": "WhiteBIT",
+      "base_url": "https://whitebit.com",
+      "ticker_endpoint": "/api/v4/public/ticker",
+      "symbols_endpoint": "/api/v4/public/markets",
+      "rate_limit_per_minute": 600,
+      "weight": 0.03,
+      "request_timeout": 15000,
+      "retry_attempts": 3,
+      "symbol_format": "BTC_USDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "USD",
+        "EUR",
+        "BTC",
+        "ETH",
+        "UAH"
+      ],
+      "api_version": "v4",
+      "ticker_fields": {
+        "price": "last_price",
+        "volume": "base_volume"
+      },
+      "symbol_separator": "_",
+      "market_type_field": "type",
+      "market_type": "spot",
+      "trades_enabled_field": "tradesEnabled"
+    },
+    {
+      "id": "biconomy",
+      "name": "Biconomy",
+      "base_url": "https://www.biconomy.com",
+      "ticker_endpoint": "/api/v1/tickers",
+      "symbols_endpoint": "/api/v1/exchangeInfo",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTC_USDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH"
+      ],
+      "api_version": "v1",
+      "headers": {
+        "X-SITE-ID": "127",
+        "User-Agent": "biconomy-feed/1.0"
+      },
+      "ticker_fields": {
+        "price": "last",
+        "volume": "vol",
+        "symbol": "symbol"
+      },
+      "ticker_wrapper": "ticker",
+      "symbol_separator": "_",
+      "status_field": "status",
+      "status_active": "trading"
+    },
+    {
+      "id": "coinw",
+      "name": "CoinW",
+      "base_url": "https://api.coinw.com",
+      "ticker_endpoint": "/api/v1/public?command=returnTicker",
+      "symbols_endpoint": "/api/v1/public?command=returnTicker",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTC_USDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "last",
+        "volume": "baseVolume"
+      },
+      "response_wrapper": "data",
+      "symbol_separator": "_",
+      "mirror_urls": [
+        "https://api.coinw.pw"
+      ]
+    },
+    {
+      "id": "toobit",
+      "name": "Toobit",
+      "base_url": "https://api.toobit.com",
+      "ticker_endpoint": "/quote/v1/ticker/24hr",
+      "symbols_endpoint": "/quote/v1/ticker/24hr",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTCUSDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "c",
+        "volume": "v",
+        "symbol": "s"
+      }
+    },
+    {
+      "id": "pionex",
+      "name": "Pionex",
+      "base_url": "https://api.pionex.com",
+      "ticker_endpoint": "/api/v1/market/tickers?type=SPOT",
+      "symbols_endpoint": "/api/v1/market/tickers?type=SPOT",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTC_USDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "close",
+        "volume": "volume",
+        "symbol": "symbol"
+      },
+      "response_wrapper": "data.tickers",
+      "symbol_separator": "_"
+    },
+    {
+      "id": "bitstamp",
+      "name": "Bitstamp",
+      "base_url": "https://www.bitstamp.net",
+      "ticker_endpoint": "/api/v2/ticker/",
+      "symbols_endpoint": "/api/v2/ticker/",
+      "rate_limit_per_minute": 100,
+      "weight": 0.00,
+      "request_timeout": 45000,
+      "retry_attempts": 2,
+      "symbol_format": "BTC/USDT",
+      "quote_currencies": [
+        "USDT",
+        "USD",
+        "EUR",
+        "GBP",
+        "PAX",
+        "USDC"
+      ],
+      "api_version": "v2",
+      "ticker_fields": {
+        "price": "last",
+        "volume": "volume",
+        "symbol": "pair"
+      },
+      "symbol_separator": "/",
+      "pair_field": "pair"
+    },
+    {
+      "id": "hashkey",
+      "name": "HashKey Global",
+      "base_url": "https://api-glb.hashkey.com",
+      "ticker_endpoint": "/quote/v1/ticker/24hr?instType=SPOT",
+      "symbols_endpoint": "/quote/v1/ticker/24hr?instType=SPOT",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTCUSDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "USD",
+        "HKD"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "c",
+        "volume": "v",
+        "symbol": "s"
+      },
+      "query_params": {
+        "instType": "SPOT"
+      }
+    },
+    {
+      "id": "hashkeyglobal",
+      "name": "HashKey Global",
+      "base_url": "https://api-glb.hashkey.com",
+      "ticker_endpoint": "/quote/v1/ticker/24hr?instType=SPOT",
+      "symbols_endpoint": "/quote/v1/ticker/24hr?instType=SPOT",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTCUSDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "USD",
+        "HKD"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "c",
+        "volume": "v",
+        "symbol": "s"
+      },
+      "query_params": {
+        "instType": "SPOT"
+      }
+    },
+    {
+      "id": "digifinex",
+      "name": "DigiFinex",
+      "base_url": "https://openapi.digifinex.com",
+      "ticker_endpoint": "/v3/ticker",
+      "symbols_endpoint": "/v3/ticker",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "btc_usdt",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "DFT"
+      ],
+      "api_version": "v3",
+      "ticker_fields": {
+        "price": "last",
+        "volume": "vol",
+        "symbol": "symbol"
+      },
+      "response_wrapper": "ticker",
+      "symbol_separator": "_",
+      "lowercase_symbols": true
+    },
+    {
+      "id": "coinstore",
+      "name": "Coinstore",
+      "base_url": "https://api.coinstore.com",
+      "ticker_endpoint": "/api/v1/market/tickers",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTCUSDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "close",
+        "volume": "amount",
+        "quote_volume": "volume",
+        "symbol": "symbol"
+      },
+      "response_wrapper": "data"
+    },
+    {
+      "id": "bitrue",
+      "name": "Bitrue",
+      "base_url": "https://openapi.bitrue.com",
+      "ticker_endpoint": "/api/v1/ticker/24hr",
+      "symbols_endpoint": "/api/v1/ticker/24hr",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 15000,
+      "retry_attempts": 3,
+      "symbol_format": "BTCUSDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "XRP"
+      ],
+      "api_version": "v1",
+      "ticker_fields": {
+        "price": "lastPrice",
+        "volume": "volume",
+        "symbol": "symbol"
+      }
+    },
+    {
+      "id": "bigone",
+      "name": "BigONE",
+      "base_url": "https://big.one",
+      "ticker_endpoint": "/api/v3/asset_pairs/tickers",
+      "symbols_endpoint": "/api/v3/asset_pairs/tickers",
+      "fallback_endpoints": {
+        "ticker": "/api/v2/tickers",
+        "symbols": "/api/v2/tickers"
+      },
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTC-USDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "ONE"
+      ],
+      "api_versions": [
+        "v3",
+        "v2"
+      ],
+      "ticker_fields": {
+        "price": "close",
+        "price_alt": "last",
+        "volume": "volume",
+        "volume_alt": "baseVolume",
+        "symbol": "market_id",
+        "symbol_alt": [
+          "market",
+          "symbol",
+          "asset_pair_name"
+        ]
+      },
+      "response_wrapper": "data",
+      "symbol_separator": "-",
+      "headers": {
+        "Accept": "application/json",
+        "User-Agent": "bigone-feed/1.0"
+      }
+    },
+    {
+      "id": "coinex",
+      "name": "CoinEx",
+      "base_url": "https://api.coinex.com",
+      "ticker_endpoint": "/v2/spot/ticker",
+      "symbols_endpoint": "/v2/spot/ticker",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTCUSDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "BTC",
+        "ETH",
+        "CET"
+      ],
+      "api_version": "v2",
+      "ticker_fields": {
+        "price": "last",
+        "volume": "volume",
+        "symbol": "market"
+      },
+      "response_wrapper": "data",
+      "headers": {
+        "Accept": "application/json",
+        "User-Agent": "coinex-feed/1.0"
+      }
+    },
+    {
+      "id": "btse",
+      "name": "BTSE",
+      "base_url": "https://api.btse.com",
+      "ticker_endpoint": "/spot/api/v3.2/market_summary",
+      "symbols_endpoint": "/spot/api/v3.2/market_summary",
+      "rate_limit_per_minute": 600,
+      "weight": 0.02,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
+      "symbol_format": "BTC-USDT",
+      "quote_currencies": [
+        "USDT",
+        "USDC",
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY"
+      ],
+      "api_version": "v3.2",
+      "ticker_fields": {
+        "price": "last",
+        "volume": "size",
+        "quote_volume": "volume",
+        "symbol": "symbol",
+        "quote": "quote",
+        "active": "active"
+      },
+      "symbol_separator": "-",
+      "headers": {
+        "Accept": "application/json",
+        "User-Agent": "btse-feed/1.0"
+      },
+      "active_field": "active",
+      "quote_field": "quote"
     }
   ],
   "polling": {

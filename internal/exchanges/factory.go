@@ -106,13 +106,55 @@ func (f *ExchangeFactory) createParser(exchangeID string, config ExchangeConfig)
 				BaseParser: BaseParser{quoteCurrencies: quoteCurrencies},
 			},
 		}
-	case "okx", "bybit", "bitget", "gateio", "huobi", "kucoin":
+	case "okx", "bitget", "gateio", "huobi":
 		// These exchanges have similar response formats
 		return &UnifiedParser{
 			StandardParser: StandardParser{
 				BaseParser: BaseParser{quoteCurrencies: quoteCurrencies},
 			},
 			symbolFormat: config.SymbolFormat,
+		}
+	case "bybit":
+		// Bybit has result.list structure
+		return &BybitParser{
+			StandardParser: StandardParser{
+				BaseParser: BaseParser{quoteCurrencies: quoteCurrencies},
+			},
+		}
+	case "whitebit":
+		// WhiteBIT returns object with symbols as keys
+		return &WhiteBitParser{
+			StandardParser: StandardParser{
+				BaseParser: BaseParser{quoteCurrencies: quoteCurrencies},
+			},
+		}
+	case "coinw":
+		// CoinW returns data object with symbols as keys
+		return &CoinWParser{
+			StandardParser: StandardParser{
+				BaseParser: BaseParser{quoteCurrencies: quoteCurrencies},
+			},
+		}
+	case "bitmart":
+		// BitMart returns data.tickers array
+		return &BitMartParser{
+			StandardParser: StandardParser{
+				BaseParser: BaseParser{quoteCurrencies: quoteCurrencies},
+			},
+		}
+	case "kucoin":
+		// KuCoin returns data.ticker array
+		return &KuCoinParser{
+			StandardParser: StandardParser{
+				BaseParser: BaseParser{quoteCurrencies: quoteCurrencies},
+			},
+		}
+	case "pionex":
+		// Pionex returns data.tickers array
+		return &PionexParser{
+			StandardParser: StandardParser{
+				BaseParser: BaseParser{quoteCurrencies: quoteCurrencies},
+			},
 		}
 	default:
 		// Default to unified parser for other exchanges
@@ -374,4 +416,419 @@ func loadExchangeConfigs(configPath string) (map[string]ExchangeConfig, error) {
 	}
 
 	return configs, nil
+}
+
+// BybitParser handles Bybit's result.list response format
+type BybitParser struct {
+	StandardParser
+}
+
+func (p *BybitParser) ParseTickers(data []byte, exchangeID string) ([]TickerData, error) {
+	var response struct {
+		RetCode int    `json:"retCode"`
+		RetMsg  string `json:"retMsg"`
+		Result  struct {
+			List []map[string]interface{} `json:"list"`
+		} `json:"result"`
+	}
+
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("unmarshaling bybit response: %w", err)
+	}
+
+	if response.RetCode != 0 {
+		return nil, fmt.Errorf("bybit API error: %s", response.RetMsg)
+	}
+
+	tickers := make([]TickerData, 0, len(response.Result.List))
+	for _, raw := range response.Result.List {
+		symbol := getStringField(raw, "symbol")
+		if symbol == "" {
+			continue
+		}
+
+		base, quote := p.ParseSymbolPair(symbol, "BTCUSDT")
+
+		ticker := TickerData{
+			ExchangeID:     exchangeID,
+			Symbol:         symbol,
+			BaseSymbol:     base,
+			QuoteSymbol:    quote,
+			Price:          parseDecimalField(raw, "lastPrice"),
+			Volume24h:      parseDecimalField(raw, "volume24h"),
+			QuoteVolume24h: parseDecimalField(raw, "turnover24h"),
+			PriceChange24h: parseDecimalField(raw, "price24hPcnt"),
+			High24h:        parseDecimalField(raw, "highPrice24h"),
+			Low24h:         parseDecimalField(raw, "lowPrice24h"),
+			Timestamp:      time.Now(),
+		}
+
+		if ticker.Price.IsPositive() {
+			tickers = append(tickers, ticker)
+		}
+	}
+
+	return tickers, nil
+}
+
+func (p *BybitParser) ParseSymbols(data []byte, exchangeID string) ([]ExchangeSymbol, error) {
+	// Bybit symbols are extracted from ticker data
+	tickers, err := p.ParseTickers(data, exchangeID)
+	if err != nil {
+		return nil, err
+	}
+
+	symbols := make([]ExchangeSymbol, 0, len(tickers))
+	for _, ticker := range tickers {
+		symbols = append(symbols, ExchangeSymbol{
+			ExchangeID:  exchangeID,
+			Symbol:      ticker.Symbol,
+			BaseSymbol:  ticker.BaseSymbol,
+			QuoteSymbol: ticker.QuoteSymbol,
+			IsActive:    true,
+		})
+	}
+	return symbols, nil
+}
+
+// WhiteBitParser handles WhiteBIT's object-based response format
+type WhiteBitParser struct {
+	StandardParser
+}
+
+func (p *WhiteBitParser) ParseTickers(data []byte, exchangeID string) ([]TickerData, error) {
+	var response map[string]map[string]interface{}
+
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("unmarshaling whitebit response: %w", err)
+	}
+
+	tickers := make([]TickerData, 0, len(response))
+	for symbol, raw := range response {
+		// Convert symbol format from BTC_USDT to standard
+		base, quote := p.ParseSymbolPair(symbol, "BTC_USDT")
+
+		ticker := TickerData{
+			ExchangeID:     exchangeID,
+			Symbol:         symbol,
+			BaseSymbol:     base,
+			QuoteSymbol:    quote,
+			Price:          parseDecimalField(raw, "last_price"),
+			Volume24h:      parseDecimalField(raw, "base_volume"),
+			QuoteVolume24h: parseDecimalField(raw, "quote_volume"),
+			PriceChange24h: parseDecimalField(raw, "change"),
+			Timestamp:      time.Now(),
+		}
+
+		if ticker.Price.IsPositive() {
+			tickers = append(tickers, ticker)
+		}
+	}
+
+	return tickers, nil
+}
+
+func (p *WhiteBitParser) ParseSymbols(data []byte, exchangeID string) ([]ExchangeSymbol, error) {
+	// WhiteBIT symbols are extracted from ticker data
+	tickers, err := p.ParseTickers(data, exchangeID)
+	if err != nil {
+		return nil, err
+	}
+
+	symbols := make([]ExchangeSymbol, 0, len(tickers))
+	for _, ticker := range tickers {
+		symbols = append(symbols, ExchangeSymbol{
+			ExchangeID:  exchangeID,
+			Symbol:      ticker.Symbol,
+			BaseSymbol:  ticker.BaseSymbol,
+			QuoteSymbol: ticker.QuoteSymbol,
+			IsActive:    true,
+		})
+	}
+	return symbols, nil
+}
+
+// CoinWParser handles CoinW's data object response format
+type CoinWParser struct {
+	StandardParser
+}
+
+func (p *CoinWParser) ParseTickers(data []byte, exchangeID string) ([]TickerData, error) {
+	var response struct {
+		Code string                            `json:"code"`
+		Data map[string]map[string]interface{} `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("unmarshaling coinw response: %w", err)
+	}
+
+	if response.Code != "200" {
+		return nil, fmt.Errorf("coinw API error: code %s", response.Code)
+	}
+
+	tickers := make([]TickerData, 0, len(response.Data))
+	for symbol, raw := range response.Data {
+		// Convert symbol format from BTC_USDT to standard
+		base, quote := p.ParseSymbolPair(symbol, "BTC_USDT")
+
+		ticker := TickerData{
+			ExchangeID:     exchangeID,
+			Symbol:         symbol,
+			BaseSymbol:     base,
+			QuoteSymbol:    quote,
+			Price:          parseDecimalField(raw, "last"),
+			Volume24h:      parseDecimalField(raw, "baseVolume"),
+			PriceChange24h: parseDecimalField(raw, "percentChange"),
+			High24h:        parseDecimalField(raw, "high24hr"),
+			Low24h:         parseDecimalField(raw, "low24hr"),
+			Timestamp:      time.Now(),
+		}
+
+		if ticker.Price.IsPositive() {
+			tickers = append(tickers, ticker)
+		}
+	}
+
+	return tickers, nil
+}
+
+func (p *CoinWParser) ParseSymbols(data []byte, exchangeID string) ([]ExchangeSymbol, error) {
+	// CoinW symbols are extracted from ticker data
+	tickers, err := p.ParseTickers(data, exchangeID)
+	if err != nil {
+		return nil, err
+	}
+
+	symbols := make([]ExchangeSymbol, 0, len(tickers))
+	for _, ticker := range tickers {
+		symbols = append(symbols, ExchangeSymbol{
+			ExchangeID:  exchangeID,
+			Symbol:      ticker.Symbol,
+			BaseSymbol:  ticker.BaseSymbol,
+			QuoteSymbol: ticker.QuoteSymbol,
+			IsActive:    true,
+		})
+	}
+	return symbols, nil
+}
+
+// BitMartParser handles BitMart's data.tickers response format
+type BitMartParser struct {
+	StandardParser
+}
+
+func (p *BitMartParser) ParseTickers(data []byte, exchangeID string) ([]TickerData, error) {
+	var response struct {
+		Code int    `json:"code"`
+		Msg  string `json:"message"`
+		Data struct {
+			Tickers []map[string]interface{} `json:"tickers"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("unmarshaling bitmart response: %w", err)
+	}
+
+	if response.Code != 1000 {
+		return nil, fmt.Errorf("bitmart API error: %s", response.Msg)
+	}
+
+	tickers := make([]TickerData, 0, len(response.Data.Tickers))
+	for _, raw := range response.Data.Tickers {
+		symbol := getStringField(raw, "symbol")
+		if symbol == "" {
+			continue
+		}
+
+		// Convert symbol format from BTC_USDT to standard
+		base, quote := p.ParseSymbolPair(symbol, "BTC_USDT")
+
+		ticker := TickerData{
+			ExchangeID:     exchangeID,
+			Symbol:         symbol,
+			BaseSymbol:     base,
+			QuoteSymbol:    quote,
+			Price:          parseDecimalField(raw, "last_price"),
+			Volume24h:      parseDecimalField(raw, "base_volume_24h"),
+			QuoteVolume24h: parseDecimalField(raw, "quote_volume_24h"),
+			PriceChange24h: parseDecimalField(raw, "fluctuation"),
+			High24h:        parseDecimalField(raw, "high_24h"),
+			Low24h:         parseDecimalField(raw, "low_24h"),
+			Timestamp:      time.Now(),
+		}
+
+		if ticker.Price.IsPositive() {
+			tickers = append(tickers, ticker)
+		}
+	}
+
+	return tickers, nil
+}
+
+func (p *BitMartParser) ParseSymbols(data []byte, exchangeID string) ([]ExchangeSymbol, error) {
+	// BitMart symbols are extracted from ticker data
+	tickers, err := p.ParseTickers(data, exchangeID)
+	if err != nil {
+		return nil, err
+	}
+
+	symbols := make([]ExchangeSymbol, 0, len(tickers))
+	for _, ticker := range tickers {
+		symbols = append(symbols, ExchangeSymbol{
+			ExchangeID:  exchangeID,
+			Symbol:      ticker.Symbol,
+			BaseSymbol:  ticker.BaseSymbol,
+			QuoteSymbol: ticker.QuoteSymbol,
+			IsActive:    true,
+		})
+	}
+	return symbols, nil
+}
+
+// KuCoinParser handles KuCoin's data.ticker response format
+type KuCoinParser struct {
+	StandardParser
+}
+
+func (p *KuCoinParser) ParseTickers(data []byte, exchangeID string) ([]TickerData, error) {
+	var response struct {
+		Code string `json:"code"`
+		Data struct {
+			Time   int64                    `json:"time"`
+			Ticker []map[string]interface{} `json:"ticker"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("unmarshaling kucoin response: %w", err)
+	}
+
+	if response.Code != "200000" {
+		return nil, fmt.Errorf("kucoin API error: code %s", response.Code)
+	}
+
+	tickers := make([]TickerData, 0, len(response.Data.Ticker))
+	for _, raw := range response.Data.Ticker {
+		symbol := getStringField(raw, "symbol")
+		if symbol == "" {
+			continue
+		}
+
+		// Convert symbol format from BTC-USDT to standard
+		base, quote := p.ParseSymbolPair(symbol, "BTC-USDT")
+
+		ticker := TickerData{
+			ExchangeID:     exchangeID,
+			Symbol:         symbol,
+			BaseSymbol:     base,
+			QuoteSymbol:    quote,
+			Price:          parseDecimalField(raw, "last"),
+			Volume24h:      parseDecimalField(raw, "vol"),
+			QuoteVolume24h: parseDecimalField(raw, "volValue"),
+			PriceChange24h: parseDecimalField(raw, "changeRate"),
+			High24h:        parseDecimalField(raw, "high"),
+			Low24h:         parseDecimalField(raw, "low"),
+			Timestamp:      time.Now(),
+		}
+
+		if ticker.Price.IsPositive() {
+			tickers = append(tickers, ticker)
+		}
+	}
+
+	return tickers, nil
+}
+
+func (p *KuCoinParser) ParseSymbols(data []byte, exchangeID string) ([]ExchangeSymbol, error) {
+	// KuCoin symbols are extracted from ticker data
+	tickers, err := p.ParseTickers(data, exchangeID)
+	if err != nil {
+		return nil, err
+	}
+
+	symbols := make([]ExchangeSymbol, 0, len(tickers))
+	for _, ticker := range tickers {
+		symbols = append(symbols, ExchangeSymbol{
+			ExchangeID:  exchangeID,
+			Symbol:      ticker.Symbol,
+			BaseSymbol:  ticker.BaseSymbol,
+			QuoteSymbol: ticker.QuoteSymbol,
+			IsActive:    true,
+		})
+	}
+	return symbols, nil
+}
+
+// PionexParser handles Pionex's data.tickers response format
+type PionexParser struct {
+	StandardParser
+}
+
+func (p *PionexParser) ParseTickers(data []byte, exchangeID string) ([]TickerData, error) {
+	var response struct {
+		Result bool `json:"result"`
+		Data   struct {
+			Tickers []map[string]interface{} `json:"tickers"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("unmarshaling pionex response: %w", err)
+	}
+
+	if !response.Result {
+		return nil, fmt.Errorf("pionex API error: result false")
+	}
+
+	tickers := make([]TickerData, 0, len(response.Data.Tickers))
+	for _, raw := range response.Data.Tickers {
+		symbol := getStringField(raw, "symbol")
+		if symbol == "" {
+			continue
+		}
+
+		// Convert symbol format from BTC_USDT to standard
+		base, quote := p.ParseSymbolPair(symbol, "BTC_USDT")
+
+		ticker := TickerData{
+			ExchangeID:     exchangeID,
+			Symbol:         symbol,
+			BaseSymbol:     base,
+			QuoteSymbol:    quote,
+			Price:          parseDecimalField(raw, "close"),
+			Volume24h:      parseDecimalField(raw, "volume"),
+			QuoteVolume24h: parseDecimalField(raw, "amount"),
+			High24h:        parseDecimalField(raw, "high"),
+			Low24h:         parseDecimalField(raw, "low"),
+			Timestamp:      time.Now(),
+		}
+
+		if ticker.Price.IsPositive() {
+			tickers = append(tickers, ticker)
+		}
+	}
+
+	return tickers, nil
+}
+
+func (p *PionexParser) ParseSymbols(data []byte, exchangeID string) ([]ExchangeSymbol, error) {
+	// Pionex symbols are extracted from ticker data
+	tickers, err := p.ParseTickers(data, exchangeID)
+	if err != nil {
+		return nil, err
+	}
+
+	symbols := make([]ExchangeSymbol, 0, len(tickers))
+	for _, ticker := range tickers {
+		symbols = append(symbols, ExchangeSymbol{
+			ExchangeID:  exchangeID,
+			Symbol:      ticker.Symbol,
+			BaseSymbol:  ticker.BaseSymbol,
+			QuoteSymbol: ticker.QuoteSymbol,
+			IsActive:    true,
+		})
+	}
+	return symbols, nil
 }
