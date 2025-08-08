@@ -11,7 +11,7 @@
       "request_timeout": 5000,
       "retry_attempts": 3,
       "symbol_format": "BTCUSDT",
-      "quote_currencies": ["USDT", "USDC", "BUSD", "BTC", "ETH", "BNB"]
+      "quote_currencies": ["USDT", "USDC", "USD", "BUSD", "FDUSD", "BTC", "ETH", "BNB", "EUR", "GBP", "TRY", "BRL", "MXN", "ARS", "ZAR", "UAH", "PLN", "DOGE", "SHIB"]
     },
     {
       "id": "coinbase",
@@ -24,7 +24,7 @@
       "request_timeout": 5000,
       "retry_attempts": 3,
       "symbol_format": "BTC-USD",
-      "quote_currencies": ["USD", "USDT", "EUR", "GBP", "BTC", "ETH"]
+      "quote_currencies": ["USD", "USDT", "USDC", "EUR", "GBP", "CAD", "AUD", "JPY", "BTC", "ETH"]
     },
     {
       "id": "kraken",
@@ -37,7 +37,7 @@
       "request_timeout": 5000,
       "retry_attempts": 3,
       "symbol_format": "XXBTZUSD",
-      "quote_currencies": ["USD", "EUR", "GBP", "CAD", "JPY", "USDT", "USDC"]
+      "quote_currencies": ["USD", "EUR", "GBP", "CAD", "JPY", "CHF", "AUD", "USDT", "USDC", "XBT", "BTC", "ETH"]
     },
     {
       "id": "okx",
@@ -50,7 +50,7 @@
       "request_timeout": 5000,
       "retry_attempts": 3,
       "symbol_format": "BTC-USDT",
-      "quote_currencies": ["USDT", "USDC", "BTC", "ETH", "OKB"]
+      "quote_currencies": ["USDT", "USDC", "USD", "EUR", "BTC", "ETH", "OKB", "AED"]
     }
   ],
   "polling": {

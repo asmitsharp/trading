@@ -21,17 +21,23 @@ import (
 
 	"github.com/ashmitsharp/trading/internal/calculator"
 	"github.com/ashmitsharp/trading/internal/exchanges"
+	"github.com/ashmitsharp/trading/internal/handler"
+	"github.com/ashmitsharp/trading/internal/outlier"
 	"github.com/ashmitsharp/trading/internal/storage"
+	"github.com/ashmitsharp/trading/internal/symbol"
 )
 
 type Application struct {
-	logger       *zap.Logger
-	postgresDB   *sql.DB
-	clickhouseDB clickhouse.Conn
-	factory      *exchanges.ExchangeFactory
-	vwapCalc     *calculator.VWAPCalculator
-	priceStorage *storage.PriceStorage
-	vwapStorage  *storage.VWAPStorage
+	logger               *zap.Logger
+	postgresDB           *sql.DB
+	clickhouseDB         clickhouse.Conn
+	factory              *exchanges.ExchangeFactory
+	vwapCalc             *calculator.VWAPCalculator
+	priceStorage         *storage.PriceStorage
+	vwapStorage          *storage.VWAPStorage
+	symbolResolver       *symbol.Resolver
+	outlierDetector      *outlier.Detector
+	verificationHandler  *handler.VerificationHandler
 }
 
 func main() {
@@ -65,12 +71,21 @@ func main() {
 	}
 	app.factory = factory
 
+	// Initialize symbol resolver
+	app.symbolResolver = symbol.NewResolver(app.postgresDB, logger)
+
 	// Initialize VWAP calculator
 	app.vwapCalc = calculator.NewVWAPCalculator(logger)
 
 	// Initialize storage services
 	app.priceStorage = storage.NewPriceStorage(app.clickhouseDB, logger)
 	app.vwapStorage = storage.NewVWAPStorage(app.clickhouseDB, logger)
+
+	// Initialize outlier detector
+	app.outlierDetector = outlier.NewDetector(app.postgresDB, app.clickhouseDB, logger)
+
+	// Initialize verification handler
+	app.verificationHandler = handler.NewVerificationHandler(app.postgresDB, app.outlierDetector, logger)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -212,6 +227,81 @@ func (app *Application) runPoller(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
+func (app *Application) resolveTokenIDs(tickers []exchanges.TickerData) {
+	for i := range tickers {
+		ticker := &tickers[i]
+		
+		// First try to resolve as a trading pair
+		pair, err := app.symbolResolver.ResolveTradingPair(ticker.ExchangeID, ticker.Symbol)
+		if err == nil {
+			ticker.BaseTokenID = pair.BaseTokenID
+			ticker.QuoteTokenID = pair.QuoteTokenID
+			continue
+		}
+		
+		// Fallback: try to resolve individual symbols
+		// Note: In the future, we should check if we have slug data from exchange
+		baseID, baseMethod, err1 := app.resolveToken(ticker.ExchangeID, ticker.BaseSymbol, "")
+		quoteID, quoteMethod, err2 := app.resolveToken(ticker.ExchangeID, ticker.QuoteSymbol, "")
+		
+		if err1 == nil && err2 == nil {
+			ticker.BaseTokenID = baseID
+			ticker.QuoteTokenID = quoteID
+			
+			// Determine overall mapping method for the pair
+			method := "slug"
+			if baseMethod == "symbol" || quoteMethod == "symbol" {
+				method = "symbol"
+			}
+			
+			// Add this pair to the database for future use
+			app.symbolResolver.AddTradingPair(baseID, quoteID, ticker.ExchangeID, ticker.Symbol)
+			
+			// Log if symbol-based mapping was used
+			if method == "symbol" {
+				app.logger.Info("Symbol-based mapping used",
+					zap.String("exchange", ticker.ExchangeID),
+					zap.String("pair", ticker.Symbol),
+					zap.String("base_method", baseMethod),
+					zap.String("quote_method", quoteMethod))
+			}
+		}
+		
+		// Log unresolved pairs for investigation
+		if ticker.BaseTokenID == 0 || ticker.QuoteTokenID == 0 {
+			app.logger.Warn("Failed to resolve token IDs",
+				zap.String("exchange", ticker.ExchangeID),
+				zap.String("symbol", ticker.Symbol),
+				zap.String("base", ticker.BaseSymbol),
+				zap.String("quote", ticker.QuoteSymbol))
+		}
+	}
+}
+
+// resolveToken attempts to resolve a single token with method tracking
+func (app *Application) resolveToken(exchangeID, symbol, slug string) (int, string, error) {
+	// If we have a slug, use the slug-based resolver
+	if slug != "" {
+		return app.symbolResolver.ResolveWithSlug(exchangeID, symbol, slug)
+	}
+	
+	// Try direct symbol resolution
+	tokenID, err := app.symbolResolver.ResolveSymbol(exchangeID, symbol)
+	if err == nil {
+		return tokenID, "symbol", nil
+	}
+	
+	// Try normalized symbol as last resort
+	if id, err := app.symbolResolver.GetTokenByNormalizedSymbol(symbol); err == nil {
+		// Add mapping for future use with lower confidence
+		app.symbolResolver.AddSymbolMappingWithMethod(id, exchangeID, symbol, 
+			symbol, "symbol", 0.75)
+		return id, "symbol", nil
+	}
+	
+	return 0, "", fmt.Errorf("unable to resolve %s", symbol)
+}
+
 func (app *Application) pollExchanges(ctx context.Context, clients map[string]exchanges.ExchangeClient) {
 	app.logger.Debug("Starting poll cycle")
 
@@ -260,19 +350,23 @@ func (app *Application) pollExchanges(ctx context.Context, clients map[string]ex
 		zap.Int("total", len(allPrices)),
 		zap.Int("exchanges", len(clients)))
 
+	// Resolve token IDs for all tickers
+	app.resolveTokenIDs(allPrices)
+
 	// Store raw price tickers in ClickHouse
 	if err := app.priceStorage.StorePriceTickers(ctx, allPrices); err != nil {
 		app.logger.Error("Failed to store price tickers", zap.Error(err))
 	}
 
-	// Group prices by symbol for VWAP calculation
-	pricesBySymbol := make(map[string][]calculator.PriceData)
+	// Group prices by token pair for VWAP calculation
+	pricesByPair := make(map[string][]calculator.PriceData)
 	for _, ticker := range allPrices {
-		// Skip if base/quote symbols are not properly parsed
-		if ticker.BaseSymbol == "" || ticker.QuoteSymbol == "" {
+		// Skip if tokens are not resolved
+		if ticker.BaseTokenID == 0 || ticker.QuoteTokenID == 0 {
 			continue
 		}
-		symbol := fmt.Sprintf("%s-%s", ticker.BaseSymbol, ticker.QuoteSymbol)
+		// Use token IDs as the key for consistent grouping
+		pairKey := fmt.Sprintf("%d-%d", ticker.BaseTokenID, ticker.QuoteTokenID)
 
 		// Get exchange weight from client
 		weight := decimal.NewFromFloat(0.01) // Default weight
@@ -280,18 +374,20 @@ func (app *Application) pollExchanges(ctx context.Context, clients map[string]ex
 			weight = decimal.NewFromFloat(client.GetWeight())
 		}
 
-		pricesBySymbol[symbol] = append(pricesBySymbol[symbol], calculator.PriceData{
-			ExchangeID: ticker.ExchangeID,
-			Symbol:     ticker.Symbol,
-			Price:      ticker.Price,
-			Volume:     ticker.Volume24h,
-			Weight:     weight, // Use exchange weight from config
-			Timestamp:  ticker.Timestamp,
+		pricesByPair[pairKey] = append(pricesByPair[pairKey], calculator.PriceData{
+			ExchangeID:   ticker.ExchangeID,
+			Symbol:       ticker.Symbol,
+			BaseTokenID:  ticker.BaseTokenID,
+			QuoteTokenID: ticker.QuoteTokenID,
+			Price:        ticker.Price,
+			Volume:       ticker.Volume24h,
+			Weight:       weight, // Use exchange weight from config
+			Timestamp:    ticker.Timestamp,
 		})
 	}
 
-	// Calculate VWAP for each symbol
-	vwapResults := app.vwapCalc.CalculateBatch(pricesBySymbol)
+	// Calculate VWAP for each token pair
+	vwapResults := app.vwapCalc.CalculateBatch(pricesByPair)
 
 	// Store VWAP prices in ClickHouse
 	app.storeVWAPPrices(ctx, vwapResults)
@@ -353,6 +449,9 @@ func (app *Application) setupRoutes(router *gin.Engine) {
 	// Health check
 	router.GET("/health", app.healthCheck)
 
+	// Serve admin dashboard
+	router.Static("/admin", "./web/admin")
+
 	// API v1 routes
 	v1 := router.Group("/api/v1")
 	{
@@ -370,6 +469,16 @@ func (app *Application) setupRoutes(router *gin.Engine) {
 
 		// VWAP endpoints
 		v1.GET("/vwap/:symbol", app.getVWAPPrice)
+		
+		// Verification endpoints (admin)
+		admin := v1.Group("/admin")
+		{
+			admin.GET("/mappings/unverified", app.getUnverifiedMappings)
+			admin.POST("/mappings/:id/verify", app.verifyMapping)
+			admin.POST("/mappings/:id/flag", app.flagMapping)
+			admin.GET("/outliers", app.getOutliers)
+			admin.POST("/outliers/:id/resolve", app.resolveOutlier)
+		}
 	}
 }
 
@@ -616,6 +725,27 @@ func (app *Application) getVWAPPrice(c *gin.Context) {
 		"symbol":  symbol,
 		"message": "VWAP price endpoint coming soon",
 	})
+}
+
+// Admin verification endpoints
+func (app *Application) getUnverifiedMappings(c *gin.Context) {
+	app.verificationHandler.GetUnverifiedMappings(c)
+}
+
+func (app *Application) verifyMapping(c *gin.Context) {
+	app.verificationHandler.VerifyMapping(c)
+}
+
+func (app *Application) flagMapping(c *gin.Context) {
+	app.verificationHandler.FlagMapping(c)
+}
+
+func (app *Application) getOutliers(c *gin.Context) {
+	app.verificationHandler.GetOutliers(c)
+}
+
+func (app *Application) resolveOutlier(c *gin.Context) {
+	app.verificationHandler.ResolveOutlier(c)
 }
 
 func getEnv(key, defaultValue string) string {

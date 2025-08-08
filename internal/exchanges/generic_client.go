@@ -262,13 +262,33 @@ func (b *BaseParser) ParseSymbolPair(symbol string, format string) (base, quote 
 		}
 	}
 
+	// Define fiat currencies that should always be treated as quotes when paired with crypto
+	fiatCurrencies := map[string]bool{
+		"USD": true, "EUR": true, "GBP": true, "JPY": true, "AUD": true,
+		"CAD": true, "CHF": true, "CNY": true, "HKD": true, "NZD": true,
+		"SEK": true, "NOK": true, "DKK": true, "SGD": true, "THB": true,
+		"PLN": true, "TRY": true, "BRL": true, "MXN": true, "ARS": true,
+		"COP": true, "CLP": true, "PEN": true, "UYU": true, "ZAR": true,
+		"INR": true, "IDR": true, "PHP": true, "VND": true, "MYR": true,
+		"KRW": true, "TWD": true, "RUB": true, "UAH": true, "CZK": true,
+		"HUF": true, "RON": true, "BGN": true, "HRK": true, "ISK": true,
+		"AED": true,
+	}
+
 	// Try to match against known quote currencies
 	for _, q := range sortedQuotes {
 		if strings.HasSuffix(upperSymbol, q) {
 			base := strings.TrimSuffix(upperSymbol, q)
-			// Validate base is reasonable (not empty, not another quote currency)
-			if base != "" && !b.isQuoteCurrency(base) {
-				return base, q
+			// Validate base is reasonable
+			if base != "" {
+				// If quote is a fiat currency, allow any non-empty base
+				if fiatCurrencies[q] {
+					return base, q
+				}
+				// Otherwise, check if base is not another quote currency
+				if !b.isQuoteCurrency(base) {
+					return base, q
+				}
 			}
 		}
 	}

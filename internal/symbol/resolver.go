@@ -142,19 +142,40 @@ func (r *Resolver) ResolveTradingPair(exchangeID, pairSymbol string) (*TokenPair
 	return pair, nil
 }
 
-// AddSymbolMapping adds a new symbol mapping
+// AddSymbolMapping adds a new symbol mapping with tracking
 func (r *Resolver) AddSymbolMapping(tokenID int, exchangeID, exchangeSymbol, normalizedSymbol string) error {
+	return r.AddSymbolMappingWithMethod(tokenID, exchangeID, exchangeSymbol, normalizedSymbol, "symbol", 0.75)
+}
+
+// AddSymbolMappingWithMethod adds a new symbol mapping with specific method and confidence
+func (r *Resolver) AddSymbolMappingWithMethod(tokenID int, exchangeID, exchangeSymbol, normalizedSymbol, method string, confidence float64) error {
+	// Determine if verification is needed
+	needsVerification := method == "symbol" // Only symbol-based mappings need verification
+	
 	query := `
-		INSERT INTO token_exchange_symbols (token_id, exchange_id, exchange_symbol, normalized_symbol)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO token_exchange_symbols (
+			token_id, exchange_id, exchange_symbol, normalized_symbol,
+			mapping_method, confidence_score, needs_verification
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (exchange_id, exchange_symbol) 
-		DO UPDATE SET token_id = $1, normalized_symbol = $4, updated_at = NOW()
+		DO UPDATE SET 
+			token_id = $1, 
+			normalized_symbol = $4,
+			mapping_method = $5,
+			confidence_score = $6,
+			needs_verification = $7,
+			updated_at = NOW()
 	`
 	
-	_, err := r.db.Exec(query, tokenID, exchangeID, exchangeSymbol, normalizedSymbol)
+	_, err := r.db.Exec(query, tokenID, exchangeID, exchangeSymbol, normalizedSymbol, 
+		method, confidence, needsVerification)
 	if err != nil {
 		return fmt.Errorf("failed to add symbol mapping: %w", err)
 	}
+	
+	// Log to audit table
+	r.logMappingAudit(tokenID, exchangeID, exchangeSymbol, method, confidence, "created")
 	
 	// Update cache
 	r.mu.Lock()
@@ -405,4 +426,54 @@ func (r *Resolver) GetTokenByNormalizedSymbol(symbol string) (int, error) {
 	}
 	
 	return tokenID, nil
+}
+
+// logMappingAudit logs mapping changes to audit table
+func (r *Resolver) logMappingAudit(tokenID int, exchangeID, exchangeSymbol, method string, confidence float64, action string) {
+	query := `
+		INSERT INTO mapping_audit_log (
+			token_id, exchange_id, exchange_symbol, 
+			mapping_method, confidence_score, action
+		) VALUES ($1, $2, $3, $4, $5, $6)
+	`
+	
+	if _, err := r.db.Exec(query, tokenID, exchangeID, exchangeSymbol, method, confidence, action); err != nil {
+		r.logger.Error("Failed to log mapping audit",
+			zap.Int("token_id", tokenID),
+			zap.String("exchange", exchangeID),
+			zap.Error(err))
+	}
+}
+
+// ResolveWithSlug attempts to resolve using slug first, then falls back to symbol
+func (r *Resolver) ResolveWithSlug(exchangeID, exchangeSymbol, slug string) (int, string, error) {
+	// Try slug-based resolution first (most reliable)
+	if slug != "" {
+		var tokenID int
+		err := r.db.QueryRow(`
+			SELECT id FROM tokens WHERE slug = $1 AND is_active = true LIMIT 1
+		`, slug).Scan(&tokenID)
+		
+		if err == nil {
+			// Found by slug - add mapping with high confidence
+			r.AddSymbolMappingWithMethod(tokenID, exchangeID, exchangeSymbol, 
+				r.normalizeSymbol(exchangeSymbol), "slug", 1.0)
+			return tokenID, "slug", nil
+		}
+	}
+	
+	// Fall back to symbol-based resolution
+	tokenID, err := r.ResolveSymbol(exchangeID, exchangeSymbol)
+	if err == nil {
+		return tokenID, "symbol", nil
+	}
+	
+	// Try normalized symbol as last resort
+	if id, err := r.GetTokenByNormalizedSymbol(exchangeSymbol); err == nil {
+		r.AddSymbolMappingWithMethod(id, exchangeID, exchangeSymbol, 
+			r.normalizeSymbol(exchangeSymbol), "symbol", 0.75)
+		return id, "symbol", nil
+	}
+	
+	return 0, "", fmt.Errorf("unable to resolve %s on %s", exchangeSymbol, exchangeID)
 }

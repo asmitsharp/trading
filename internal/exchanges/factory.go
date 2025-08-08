@@ -75,9 +75,14 @@ func (f *ExchangeFactory) createParser(exchangeID string, config ExchangeConfig)
 	if len(quoteCurrencies) == 0 {
 		// Default quote currencies
 		quoteCurrencies = []string{
-			"USDT", "USDC", "USD", "BUSD", "DAI",
-			"EUR", "GBP", "JPY", "KRW", "INR",
-			"BTC", "ETH", "BNB",
+			// Stablecoins
+			"USDT", "USDC", "USD", "BUSD", "DAI", "TUSD", "FDUSD", "EURI",
+			// Fiat currencies
+			"EUR", "GBP", "JPY", "KRW", "INR", "TRY", "BRL", "MXN", 
+			"ARS", "ZAR", "UAH", "COP", "SGD", "AUD", "CAD", "CHF",
+			"PLN", "RUB", "CNY", "HKD", "NZD", "THB", "IDR", "PHP",
+			// Crypto quote pairs
+			"BTC", "ETH", "BNB", "SOL", "DOGE", "SHIB",
 		}
 	}
 

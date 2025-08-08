@@ -45,7 +45,7 @@ func main() {
 	if dbPassword == "" {
 		dbPassword = "crypto_password"
 	}
-	
+
 	connStr := fmt.Sprintf("host=%s port=5432 user=%s password=%s dbname=%s sslmode=disable", dbHost, dbUser, dbPassword, dbName)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -82,13 +82,13 @@ func seedSymbolMappings(db *sql.DB) error {
 		{"BTC", "kraken", "XBT", "BTC"},
 		{"BTC", "kraken", "XXBT", "BTC"},
 		{"BTC", "bitfinex", "BTC", "BTC"},
-		
+
 		// Ethereum
 		{"ETH", "binance", "ETH", "ETH"},
 		{"ETH", "coinbase", "ETH", "ETH"},
 		{"ETH", "kraken", "ETH", "ETH"},
 		{"ETH", "kraken", "XETH", "ETH"},
-		
+
 		// Stablecoins
 		{"USDT", "binance", "USDT", "USDT"},
 		{"USDT", "coinbase", "USDT", "USDT"},
@@ -96,14 +96,14 @@ func seedSymbolMappings(db *sql.DB) error {
 		{"USDC", "binance", "USDC", "USDC"},
 		{"USDC", "coinbase", "USDC", "USDC"},
 		{"USDC", "kraken", "USDC", "USDC"},
-		
+
 		// USD representations
 		{"USD", "coinbase", "USD", "USD"},
 		{"USD", "kraken", "USD", "USD"},
 		{"USD", "kraken", "ZUSD", "USD"},
 		{"USD", "bitstamp", "USD", "USD"},
 		{"USD", "gemini", "USD", "USD"},
-		
+
 		// Other major tokens
 		{"BNB", "binance", "BNB", "BNB"},
 		{"SOL", "binance", "SOL", "SOL"},
@@ -202,7 +202,7 @@ func seedTradingPairs(db *sql.DB) error {
 		{"BTC", "EUR", "kraken", "XXBTZEUR"},
 		{"BTC", "USDT", "okx", "BTC-USDT"},
 		{"BTC", "USDC", "okx", "BTC-USDC"},
-		
+
 		// ETH pairs
 		{"ETH", "USDT", "binance", "ETHUSDT"},
 		{"ETH", "USDC", "binance", "ETHUSDC"},
@@ -213,7 +213,7 @@ func seedTradingPairs(db *sql.DB) error {
 		{"ETH", "USD", "kraken", "ETHUSD"},
 		{"ETH", "USDT", "kraken", "ETHUSDT"},
 		{"ETH", "BTC", "kraken", "ETHXBT"},
-		
+
 		// Other major pairs
 		{"SOL", "USDT", "binance", "SOLUSDT"},
 		{"SOL", "USD", "coinbase", "SOL-USD"},
