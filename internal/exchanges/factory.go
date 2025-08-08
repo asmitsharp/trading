@@ -45,7 +45,14 @@ func (f *ExchangeFactory) CreateClient(exchangeID string) (ExchangeClient, error
 func (f *ExchangeFactory) CreateAllClients() map[string]ExchangeClient {
 	clients := make(map[string]ExchangeClient)
 
-	for exchangeID := range f.configs {
+	for exchangeID, config := range f.configs {
+		// Skip disabled exchanges
+		if config.Disabled {
+			f.logger.Info("Skipping disabled exchange",
+				zap.String("exchange", exchangeID))
+			continue
+		}
+		
 		client, err := f.CreateClient(exchangeID)
 		if err != nil {
 			f.logger.Error("Failed to create client",

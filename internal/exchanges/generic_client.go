@@ -139,9 +139,22 @@ func (g *GenericRESTClient) makeRequest(ctx context.Context, url string) ([]byte
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	// Add custom headers if needed
-	req.Header.Set("User-Agent", "CryptoPlatform/1.0")
-	req.Header.Set("Accept", "application/json")
+	// Add custom headers based on exchange
+	switch g.config.ID {
+	case "okx":
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("OK-ACCESS-KEY", "") // OKX might need this even if empty
+	case "cryptocom":
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+		req.Header.Set("Accept", "application/json")
+	case "bitstamp":
+		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36")
+		req.Header.Set("Accept", "application/json")
+	default:
+		req.Header.Set("User-Agent", "CryptoPlatform/1.0")
+		req.Header.Set("Accept", "application/json")
+	}
 	
 	start := time.Now()
 	resp, err := g.httpClient.Do(req)

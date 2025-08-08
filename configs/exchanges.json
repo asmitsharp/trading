@@ -89,10 +89,11 @@
       "base_url": "https://www.okx.com",
       "ticker_endpoint": "/api/v5/market/tickers?instType=SPOT",
       "symbols_endpoint": "/api/v5/public/instruments?instType=SPOT",
-      "rate_limit_per_minute": 100,
+      "rate_limit_per_minute": 600,
       "weight": 0.00,
-      "request_timeout": 45000,
-      "retry_attempts": 2,
+      "disabled": true,
+      "request_timeout": 30000,
+      "retry_attempts": 3,
       "symbol_format": "BTC-USDT",
       "quote_currencies": [
         "USDT",
@@ -103,7 +104,15 @@
         "ETH",
         "OKB",
         "AED"
-      ]
+      ],
+      "api_version": "v5",
+      "ticker_fields": {
+        "symbol": "instId",
+        "price": "last",
+        "volume": "vol24h"
+      },
+      "response_wrapper": "data",
+      "symbol_separator": "-"
     },
     {
       "id": "bitget",
@@ -229,13 +238,13 @@
       "id": "cryptocom",
       "name": "Crypto.com",
       "base_url": "https://api.crypto.com",
-      "ticker_endpoint": "/v1/public/get-tickers",
-      "symbols_endpoint": "/v1/public/get-instruments",
+      "ticker_endpoint": "/exchange/v1/public/get-tickers",
+      "symbols_endpoint": "/exchange/v1/public/get-instruments",
       "rate_limit_per_minute": 100,
       "weight": 0.00,
       "request_timeout": 45000,
       "retry_attempts": 2,
-      "symbol_format": "BTCUSDT",
+      "symbol_format": "BTC_USDT",
       "quote_currencies": [
         "USDT",
         "USDC",
@@ -246,18 +255,7 @@
         "EUR",
         "GBP"
       ],
-      "api_version": "v2",
-      "ticker_fields": {
-        "symbol": "i",
-        "price": "a",
-        "volume": "v"
-      },
-      "fallback_api_version": "/exchange/v1",
-      "response_wrapper": "result.data",
-      "symbol_separator": "_",
-      "exclude_patterns": [
-        "-"
-      ]
+      "symbol_separator": "_"
     },
     {
       "id": "kucoin",
@@ -578,6 +576,7 @@
       "symbols_endpoint": "/api/v2/ticker/",
       "rate_limit_per_minute": 100,
       "weight": 0.00,
+      "disabled": true,
       "request_timeout": 45000,
       "retry_attempts": 2,
       "symbol_format": "BTC/USDT",
@@ -686,7 +685,8 @@
       "base_url": "https://api.coinstore.com",
       "ticker_endpoint": "/api/v1/market/tickers",
       "rate_limit_per_minute": 600,
-      "weight": 0.02,
+      "weight": 0.00,
+      "disabled": true,
       "request_timeout": 30000,
       "retry_attempts": 3,
       "symbol_format": "BTCUSDT",

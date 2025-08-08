@@ -61,6 +61,7 @@ type ExchangeConfig struct {
 	RetryAttempts      int      `json:"retry_attempts"`
 	SymbolFormat       string   `json:"symbol_format"`
 	QuoteCurrencies    []string `json:"quote_currencies"`
+	Disabled           bool     `json:"disabled"`
 }
 
 // Health represents exchange health status
