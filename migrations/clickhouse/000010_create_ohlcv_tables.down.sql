@@ -1,0 +1,10 @@
+-- Drop OHLCV tables and views
+DROP VIEW IF EXISTS ohlcv_1m_realtime;
+DROP TABLE IF EXISTS ohlcv_aggregated;
+DROP TABLE IF EXISTS ohlcv_1w;
+DROP TABLE IF EXISTS ohlcv_1d;
+DROP TABLE IF EXISTS ohlcv_4h;
+DROP TABLE IF EXISTS ohlcv_1h;
+DROP TABLE IF EXISTS ohlcv_15m;
+DROP TABLE IF EXISTS ohlcv_5m;
+DROP TABLE IF EXISTS ohlcv_1m;

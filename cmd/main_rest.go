@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/ashmitsharp/trading/internal/calculator"
 	"github.com/ashmitsharp/trading/internal/exchanges"
 	"github.com/ashmitsharp/trading/internal/handler"
+	"github.com/ashmitsharp/trading/internal/ohlcv"
 	"github.com/ashmitsharp/trading/internal/outlier"
 	"github.com/ashmitsharp/trading/internal/storage"
 	"github.com/ashmitsharp/trading/internal/symbol"
@@ -32,12 +34,14 @@ type Application struct {
 	postgresDB           *sql.DB
 	clickhouseDB         clickhouse.Conn
 	factory              *exchanges.ExchangeFactory
-	vwapCalc             *calculator.VWAPCalculator
+	vwapCalc             *calculator.EnhancedVWAPCalculator
 	priceStorage         *storage.PriceStorage
 	vwapStorage          *storage.VWAPStorage
 	symbolResolver       *symbol.Resolver
 	outlierDetector      *outlier.Detector
 	verificationHandler  *handler.VerificationHandler
+	volumeNormalizer     *exchanges.VolumeNormalizer
+	ohlcvService         *ohlcv.Service
 }
 
 func main() {
@@ -47,7 +51,19 @@ func main() {
 	}
 
 	// Initialize logger
-	logger, err := zap.NewProduction()
+	var logger *zap.Logger
+	var err error
+	logToFile := os.Getenv("LOG_TO_FILE")
+	
+	if logToFile == "true" {
+		config := zap.NewProductionConfig()
+		config.OutputPaths = []string{"app.log"}
+		config.ErrorOutputPaths = []string{"app.log"}
+		logger, err = config.Build()
+	} else {
+		logger, err = zap.NewProduction()
+	}
+	
 	if err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
@@ -73,9 +89,21 @@ func main() {
 
 	// Initialize symbol resolver
 	app.symbolResolver = symbol.NewResolver(app.postgresDB, logger)
+	
+	// Initialize volume normalizer
+	app.volumeNormalizer = exchanges.NewVolumeNormalizer(logger)
 
-	// Initialize VWAP calculator
-	app.vwapCalc = calculator.NewVWAPCalculator(logger)
+	// Initialize enhanced VWAP calculator with configuration
+	vwapConfig := &calculator.VWAPConfig{
+		MaxTickers:                 600,
+		StaleDataThreshold:         8 * time.Hour,
+		MADMultiplier:              decimal.NewFromInt(4),
+		MADConsistencyConstant:     decimal.NewFromFloat(1.4826),
+		MinExchanges:               2, // Reduced from 3 for testing - many pairs only have 2 exchanges
+		VolumeManipulationThreshold: decimal.NewFromInt(50),
+		EnableDetailedStats:        true,
+	}
+	app.vwapCalc = calculator.NewEnhancedVWAPCalculator(logger, vwapConfig)
 
 	// Initialize storage services
 	app.priceStorage = storage.NewPriceStorage(app.clickhouseDB, logger)
@@ -86,6 +114,9 @@ func main() {
 
 	// Initialize verification handler
 	app.verificationHandler = handler.NewVerificationHandler(app.postgresDB, app.outlierDetector, logger)
+
+	// Initialize OHLCV service
+	app.ohlcvService = ohlcv.NewService(app.clickhouseDB, logger)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -106,15 +137,17 @@ func main() {
 
 	switch serviceMode {
 	case "poller":
-		wg.Add(1)
+		wg.Add(2)
 		go app.runPoller(ctx, &wg)
+		go app.runOHLCV(ctx, &wg)
 	case "api":
 		wg.Add(1)
 		go app.runAPI(ctx, &wg)
 	case "all":
-		wg.Add(2)
+		wg.Add(3)
 		go app.runPoller(ctx, &wg)
 		go app.runAPI(ctx, &wg)
+		go app.runOHLCV(ctx, &wg)
 	default:
 		logger.Fatal("Invalid SERVICE_MODE", zap.String("mode", serviceMode))
 	}
@@ -303,7 +336,10 @@ func (app *Application) resolveToken(exchangeID, symbol, slug string) (int, stri
 }
 
 func (app *Application) pollExchanges(ctx context.Context, clients map[string]exchanges.ExchangeClient) {
-	app.logger.Debug("Starting poll cycle")
+	pollTime := time.Now()
+	app.logger.Info("Starting poll cycle",
+		zap.Time("poll_time", pollTime),
+		zap.String("minute", pollTime.Format("15:04")))
 
 	// Collect prices from all exchanges
 	var wg sync.WaitGroup
@@ -350,6 +386,11 @@ func (app *Application) pollExchanges(ctx context.Context, clients map[string]ex
 		zap.Int("total", len(allPrices)),
 		zap.Int("exchanges", len(clients)))
 
+	// Normalize volumes to USD for all tickers
+	for i := range allPrices {
+		app.volumeNormalizer.NormalizeVolume(&allPrices[i])
+	}
+
 	// Resolve token IDs for all tickers
 	app.resolveTokenIDs(allPrices)
 
@@ -368,12 +409,7 @@ func (app *Application) pollExchanges(ctx context.Context, clients map[string]ex
 		// Use token IDs as the key for consistent grouping
 		pairKey := fmt.Sprintf("%d-%d", ticker.BaseTokenID, ticker.QuoteTokenID)
 
-		// Get exchange weight from client
-		weight := decimal.NewFromFloat(0.01) // Default weight
-		if client, ok := clients[ticker.ExchangeID]; ok {
-			weight = decimal.NewFromFloat(client.GetWeight())
-		}
-
+		// NO MANUAL WEIGHTS - let volume determine influence
 		pricesByPair[pairKey] = append(pricesByPair[pairKey], calculator.PriceData{
 			ExchangeID:   ticker.ExchangeID,
 			Symbol:       ticker.Symbol,
@@ -381,7 +417,7 @@ func (app *Application) pollExchanges(ctx context.Context, clients map[string]ex
 			QuoteTokenID: ticker.QuoteTokenID,
 			Price:        ticker.Price,
 			Volume:       ticker.Volume24h,
-			Weight:       weight, // Use exchange weight from config
+			Weight:       decimal.NewFromInt(1), // Equal weight - volume determines influence
 			Timestamp:    ticker.Timestamp,
 		})
 	}
@@ -391,17 +427,64 @@ func (app *Application) pollExchanges(ctx context.Context, clients map[string]ex
 
 	// Store VWAP prices in ClickHouse
 	app.storeVWAPPrices(ctx, vwapResults)
+	
+	// Log poll completion
+	app.logger.Info("Poll cycle completed",
+		zap.Time("completed_at", time.Now()),
+		zap.Duration("duration", time.Since(pollTime)),
+		zap.Int("pairs_processed", len(vwapResults)))
 }
 
-func (app *Application) storeVWAPPrices(ctx context.Context, results map[string]*calculator.VWAPResult) {
+func (app *Application) storeVWAPPrices(ctx context.Context, results map[string]*calculator.EnhancedVWAPResult) {
 	if len(results) == 0 {
 		return
 	}
 
+	// Convert enhanced results to basic results for storage
+	basicResults := make(map[string]*calculator.VWAPResult)
+	for key, enhanced := range results {
+		basicResults[key] = &enhanced.VWAPResult
+		
+		// Log additional metrics for monitoring
+		if enhanced.QualityIndicator == "low" || enhanced.QualityIndicator == "insufficient" {
+			app.logger.Warn("Low quality VWAP result",
+				zap.String("pair", key),
+				zap.String("quality", enhanced.QualityIndicator),
+				zap.Float64("confidence", enhanced.ConfidenceScore),
+				zap.Int("exchanges", enhanced.ExchangeCount))
+		}
+	}
+
 	// Use the storage service to store VWAP results
-	if err := app.vwapStorage.StoreVWAPResults(ctx, results); err != nil {
+	if err := app.vwapStorage.StoreVWAPResults(ctx, basicResults); err != nil {
 		app.logger.Error("Failed to store VWAP results", zap.Error(err))
 	}
+	
+	// Log statistics periodically
+	if time.Now().Unix()%60 == 0 { // Every minute
+		stats := app.vwapCalc.GetStatistics()
+		app.logger.Info("VWAP Calculator Statistics",
+			zap.Int64("calculations", stats.CalculationsPerformed),
+			zap.String("avg_confidence", stats.AverageConfidence.String()),
+			zap.Int64("low_confidence", stats.LowConfidenceCount),
+			zap.Int64("insufficient_data", stats.InsufficientDataCount))
+	}
+}
+
+func (app *Application) runOHLCV(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	app.logger.Info("Starting OHLCV service...")
+	
+	if err := app.ohlcvService.Start(ctx); err != nil {
+		app.logger.Fatal("Failed to start OHLCV service", zap.Error(err))
+	}
+	
+	// Wait for context cancellation
+	<-ctx.Done()
+	
+	// Stop the service gracefully
+	app.ohlcvService.Stop()
+	app.logger.Info("OHLCV service stopped")
 }
 
 func (app *Application) runAPI(ctx context.Context, wg *sync.WaitGroup) {
@@ -469,6 +552,11 @@ func (app *Application) setupRoutes(router *gin.Engine) {
 
 		// VWAP endpoints
 		v1.GET("/vwap/:symbol", app.getVWAPPrice)
+		v1.GET("/vwap/stats", app.getVWAPStats)
+		
+		// OHLCV endpoints
+		v1.GET("/ohlcv/:base/:quote", app.getOHLCV)
+		v1.POST("/ohlcv/backfill", app.backfillOHLCV)
 		
 		// Verification endpoints (admin)
 		admin := v1.Group("/admin")
@@ -727,6 +815,22 @@ func (app *Application) getVWAPPrice(c *gin.Context) {
 	})
 }
 
+func (app *Application) getVWAPStats(c *gin.Context) {
+	stats := app.vwapCalc.GetStatistics()
+	
+	c.JSON(http.StatusOK, gin.H{
+		"calculations_performed": stats.CalculationsPerformed,
+		"average_mad":           stats.AverageMAD.String(),
+		"average_confidence":    stats.AverageConfidence.String(),
+		"low_confidence_count":  stats.LowConfidenceCount,
+		"insufficient_data_count": stats.InsufficientDataCount,
+		"tickers_received":      stats.TotalTickersReceived,
+		"tickers_after_quality": stats.TickersAfterQuality,
+		"tickers_after_mad":     stats.TickersAfterMAD,
+		"contributing_exchanges": stats.ContributingExchanges,
+	})
+}
+
 // Admin verification endpoints
 func (app *Application) getUnverifiedMappings(c *gin.Context) {
 	app.verificationHandler.GetUnverifiedMappings(c)
@@ -746,6 +850,144 @@ func (app *Application) getOutliers(c *gin.Context) {
 
 func (app *Application) resolveOutlier(c *gin.Context) {
 	app.verificationHandler.ResolveOutlier(c)
+}
+
+// OHLCV endpoints
+func (app *Application) getOHLCV(c *gin.Context) {
+	baseSymbol := c.Param("base")
+	quoteSymbol := c.Param("quote")
+	
+	// Get optional query parameters
+	timeframe := c.DefaultQuery("timeframe", "1m")
+	exchangeID := c.Query("exchange")
+	limitStr := c.DefaultQuery("limit", "100")
+	
+	// Convert limit to int
+	limit := 100
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 1000 {
+		limit = l
+	}
+	
+	// Get token IDs
+	var baseTokenID, quoteTokenID uint32
+	err := app.postgresDB.QueryRow(`
+		SELECT id FROM tokens WHERE symbol = $1
+	`, baseSymbol).Scan(&baseTokenID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Base token not found"})
+		return
+	}
+	
+	err = app.postgresDB.QueryRow(`
+		SELECT id FROM tokens WHERE symbol = $1
+	`, quoteSymbol).Scan(&quoteTokenID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Quote token not found"})
+		return
+	}
+	
+	// Convert timeframe string to enum
+	var tf ohlcv.Timeframe
+	switch timeframe {
+	case "1m":
+		tf = ohlcv.Timeframe1m
+	case "5m":
+		tf = ohlcv.Timeframe5m
+	case "15m":
+		tf = ohlcv.Timeframe15m
+	case "1h":
+		tf = ohlcv.Timeframe1h
+	case "4h":
+		tf = ohlcv.Timeframe4h
+	case "1d":
+		tf = ohlcv.Timeframe1d
+	case "1w":
+		tf = ohlcv.Timeframe1w
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid timeframe"})
+		return
+	}
+	
+	// Get candles
+	candles, err := app.ohlcvService.GetLatestCandles(
+		c.Request.Context(),
+		baseTokenID,
+		quoteTokenID,
+		tf,
+		exchangeID,
+		limit,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	
+	// Format response
+	result := make([]map[string]interface{}, len(candles))
+	for i, candle := range candles {
+		result[i] = map[string]interface{}{
+			"timestamp":    candle.Timestamp.Unix(),
+			"open":         candle.Open.String(),
+			"high":         candle.High.String(),
+			"low":          candle.Low.String(),
+			"close":        candle.Close.String(),
+			"volume":       candle.Volume.String(),
+			"quote_volume": candle.QuoteVolume.String(),
+			"vwap":         candle.VWAPPrice.String(),
+			"trade_count":  candle.TradeCount,
+		}
+		if exchangeID != "" {
+			result[i]["exchange"] = candle.ExchangeID
+		}
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"pair":      baseSymbol + "/" + quoteSymbol,
+		"timeframe": timeframe,
+		"candles":   result,
+	})
+}
+
+func (app *Application) backfillOHLCV(c *gin.Context) {
+	var req struct {
+		StartDate string `json:"start_date" binding:"required"`
+		EndDate   string `json:"end_date" binding:"required"`
+	}
+	
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	
+	// Parse dates
+	startDate, err := time.Parse("2006-01-02", req.StartDate)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start_date format (use YYYY-MM-DD)"})
+		return
+	}
+	
+	endDate, err := time.Parse("2006-01-02", req.EndDate)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end_date format (use YYYY-MM-DD)"})
+		return
+	}
+	
+	// Run backfill in background
+	go func() {
+		if err := app.ohlcvService.BackfillHistoricalData(
+			context.Background(),
+			startDate,
+			endDate,
+		); err != nil {
+			app.logger.Error("Backfill failed", zap.Error(err))
+		}
+	}()
+	
+	c.JSON(http.StatusAccepted, gin.H{
+		"message": "Backfill started",
+		"start":   startDate,
+		"end":     endDate,
+	})
 }
 
 func getEnv(key, defaultValue string) string {

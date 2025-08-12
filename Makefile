@@ -192,6 +192,11 @@ map-exchange-symbols: ## Map exchange symbols to unified token IDs
 	@go run cmd/mapper/main.go
 	@echo "Exchange symbol mapping complete"
 
+analyze-missing-tokens: ## Analyze and categorize missing tokens from mapping
+	@echo "Analyzing missing tokens from exchange mapping..."
+	@go run cmd/analyze-missing-tokens/main.go
+	@echo "Missing token analysis complete"
+
 # Run migrations and seed data
 db-setup: migrate-up seed-tokens seed-symbols ## Run migrations and seed initial data
 	@echo "Database setup complete"

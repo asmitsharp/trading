@@ -318,9 +318,16 @@ func (r *Resolver) fetchSymbolFromDB(exchangeID, symbol string) (int, error) {
 
 func (r *Resolver) fetchPairFromDB(exchangeID, pairSymbol string) (*TokenPair, error) {
 	var pair TokenPair
+	// Use ILIKE for case-insensitive matching and also try with common separators
 	query := `
 		SELECT base_token_id, quote_token_id FROM trading_pairs
-		WHERE exchange_id = $1 AND exchange_pair_symbol = $2 AND is_active = true
+		WHERE exchange_id = $1 AND (
+			LOWER(exchange_pair_symbol) = LOWER($2) OR
+			LOWER(REPLACE(exchange_pair_symbol, '/', '')) = LOWER($2) OR
+			LOWER(REPLACE(exchange_pair_symbol, '-', '')) = LOWER($2) OR
+			LOWER(REPLACE(exchange_pair_symbol, '_', '')) = LOWER($2)
+		) AND is_active = true
+		LIMIT 1
 	`
 	
 	err := r.db.QueryRow(query, exchangeID, pairSymbol).Scan(&pair.BaseTokenID, &pair.QuoteTokenID)

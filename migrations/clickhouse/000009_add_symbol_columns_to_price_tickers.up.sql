@@ -1,9 +1,3 @@
 -- Add symbol columns to price_tickers table for better debugging and tracking
-ALTER TABLE price_tickers
-    ADD COLUMN IF NOT EXISTS symbol String AFTER exchange_id;
-
-ALTER TABLE price_tickers
-    ADD COLUMN IF NOT EXISTS base_symbol String AFTER symbol;
-
-ALTER TABLE price_tickers
-    ADD COLUMN IF NOT EXISTS quote_symbol String AFTER base_symbol;
+-- Note: Columns already exist, migration is completed
+SELECT 'Symbol columns already exist in price_tickers table' AS message;

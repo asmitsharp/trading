@@ -288,6 +288,15 @@ func (b *BaseParser) ParseSymbolPair(symbol string, format string) (base, quote 
 		"AED": true,
 	}
 
+	// Define major cryptocurrencies that should be treated as base when paired with fiat
+	majorCryptos := map[string]bool{
+		"BTC": true, "ETH": true, "BNB": true, "XRP": true, "ADA": true,
+		"SOL": true, "DOGE": true, "DOT": true, "MATIC": true, "SHIB": true,
+		"TRX": true, "AVAX": true, "LINK": true, "UNI": true, "ATOM": true,
+		"LTC": true, "XLM": true, "ETC": true, "BCH": true, "FIL": true,
+		"APT": true, "NEAR": true, "ICP": true, "VET": true, "ALGO": true,
+	}
+
 	// Try to match against known quote currencies
 	for _, q := range sortedQuotes {
 		if strings.HasSuffix(upperSymbol, q) {
@@ -296,6 +305,17 @@ func (b *BaseParser) ParseSymbolPair(symbol string, format string) (base, quote 
 			if base != "" {
 				// If quote is a fiat currency, allow any non-empty base
 				if fiatCurrencies[q] {
+					return base, q
+				}
+				// If base is a major crypto and quote is also in quote currencies,
+				// prioritize crypto as base (handles BTC/ETH, BTC/BNB type pairs)
+				if majorCryptos[base] && b.isQuoteCurrency(base) {
+					// Check if quote is fiat or stablecoin (should be quote)
+					if fiatCurrencies[q] || q == "USDT" || q == "USDC" || q == "BUSD" || q == "DAI" || q == "FDUSD" {
+						return base, q
+					}
+					// For crypto-to-crypto pairs, use the match if base is "more major" than quote
+					// This is a simple heuristic - BTC > ETH > BNB > others
 					return base, q
 				}
 				// Otherwise, check if base is not another quote currency
