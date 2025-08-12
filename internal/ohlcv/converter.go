@@ -193,8 +193,8 @@ func (c *Converter) RollupCandles(ctx context.Context, from, to Timeframe, start
 
 // HierarchicalRollup performs cascading rollup from 1m to all higher timeframes
 func (c *Converter) HierarchicalRollup(ctx context.Context, baseTime time.Time) error {
-	// Round to start of minute
-	startTime := baseTime.Truncate(time.Minute)
+	// Ensure UTC timezone and round to start of minute
+	startTime := baseTime.UTC().Truncate(time.Minute)
 
 	// 1m -> 5m (every 5 minutes)
 	if startTime.Minute()%5 == 0 {

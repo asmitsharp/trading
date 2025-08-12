@@ -57,7 +57,7 @@ func (s *Service) run(ctx context.Context) {
 	defer s.wg.Done()
 	
 	// Wait until the next minute boundary plus 10 seconds for data to be collected
-	now := time.Now()
+	now := time.Now().UTC()
 	nextMinute := now.Truncate(time.Minute).Add(time.Minute)
 	waitDuration := nextMinute.Sub(now) + 10*time.Second
 	
@@ -90,8 +90,8 @@ func (s *Service) run(ctx context.Context) {
 
 // processMinute handles all OHLCV processing for a given minute
 func (s *Service) processMinute(ctx context.Context, currentTime time.Time) {
-	// Round to start of minute
-	minuteTime := currentTime.Truncate(time.Minute)
+	// Ensure UTC timezone and round to start of minute
+	minuteTime := currentTime.UTC().Truncate(time.Minute)
 	
 	// Process previous complete minute
 	endTime := minuteTime
@@ -151,6 +151,8 @@ func (s *Service) processMinute(ctx context.Context, currentTime time.Time) {
 
 // aggregateAllTimeframes aggregates exchange data for all timeframes
 func (s *Service) aggregateAllTimeframes(ctx context.Context, baseTime time.Time) {
+	// Ensure UTC timezone
+	baseTime = baseTime.UTC()
 	timeframes := []struct {
 		tf       Timeframe
 		duration time.Duration
