@@ -121,7 +121,7 @@ func (c *Converter) GenerateFromVWAP(ctx context.Context, startTime, endTime tim
 			toDecimal128(sum(toFloat64(total_volume)), 18) AS volume,
 			toDecimal128(sum(toFloat64(total_volume) * toFloat64(vwap_price)), 18) AS quote_volume,
 			count() AS trade_count,
-			toDecimal128(avg(toFloat64(vwap_price)), 18) AS vwap_price,  -- Simple average for aggregated VWAP
+			toDecimal128(sum(toFloat64(vwap_price) * toFloat64(total_volume)) / sum(toFloat64(total_volume)), 18) AS vwap_price,
 			max(exchange_count) AS exchange_count,  -- Use max to get total unique exchanges
 			toUnixTimestamp64Milli(now64()) AS version
 		FROM vwap_prices
