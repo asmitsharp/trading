@@ -67,10 +67,10 @@ func (c *Converter) GenerateFromPriceTickers(ctx context.Context, startTime, end
 			base_token_id,
 			quote_token_id,
 			exchange_id,
-			any(price) AS open,  -- First price in the minute
+			argMin(price, timestamp) AS open,  -- First price chronologically
 			max(price) AS high,
 			min(price) AS low,
-			anyLast(price) AS close,  -- Last price in the minute
+			argMax(price, timestamp) AS close,  -- Last price chronologically
 			toDecimal64(sum(toFloat64(volume_24h)), 18) AS volume,  -- Sum 24h volumes (CoinMarketCap approach)
 			toDecimal64(sum(toFloat64(volume_24h) * toFloat64(price)), 18) AS quote_volume,
 			count() AS trade_count,
@@ -114,10 +114,10 @@ func (c *Converter) GenerateFromVWAP(ctx context.Context, startTime, endTime tim
 			'1m' AS timeframe,
 			base_token_id,
 			quote_token_id,
-			any(vwap_price) AS open,
+			argMin(vwap_price, timestamp) AS open,
 			max(vwap_price) AS high,
 			min(vwap_price) AS low,
-			anyLast(vwap_price) AS close,
+			argMax(vwap_price, timestamp) AS close,
 			toDecimal64(sum(toFloat64(total_volume)), 18) AS volume,
 			toDecimal64(sum(toFloat64(total_volume) * toFloat64(vwap_price)), 18) AS quote_volume,
 			count() AS trade_count,
@@ -157,10 +157,10 @@ func (c *Converter) RollupCandles(ctx context.Context, from, to Timeframe, start
 			base_token_id,
 			quote_token_id,
 			exchange_id,
-			any(open) AS open,  -- First open in the period
+			argMin(open, timestamp) AS open,  -- First open chronologically
 			max(high) AS high,
 			min(low) AS low,
-			anyLast(close) AS close,  -- Last close in the period
+			argMax(close, timestamp) AS close,  -- Last close chronologically
 			anyLast(volume) AS volume,  -- Use last volume (24h volume approach)
 			anyLast(quote_volume) AS quote_volume,  -- Use last quote volume
 			sum(trade_count) AS trade_count,
