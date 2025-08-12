@@ -144,7 +144,7 @@ func (c *Converter) GenerateFromVWAP(ctx context.Context, startTime, endTime tim
 func (c *Converter) RollupCandles(ctx context.Context, from, to Timeframe, startTime, endTime time.Time) error {
 	fromTable := c.getTableName(from)
 	toTable := c.getTableName(to)
-	interval := c.getTimeInterval(to)
+	intervalExpr := c.getIntervalExpression(to)
 
 	query := fmt.Sprintf(`
 		INSERT INTO %s (
@@ -153,7 +153,7 @@ func (c *Converter) RollupCandles(ctx context.Context, from, to Timeframe, start
 			trade_count, vwap_price, version
 		)
 		SELECT
-			toStartOf%s(timestamp) AS timestamp,
+			%s AS timestamp,
 			base_token_id,
 			quote_token_id,
 			exchange_id,
@@ -171,11 +171,11 @@ func (c *Converter) RollupCandles(ctx context.Context, from, to Timeframe, start
 		FROM %s
 		WHERE timestamp >= ? AND timestamp < ?
 		GROUP BY 
-			toStartOf%s(timestamp),
+			%s,
 			base_token_id,
 			quote_token_id,
 			exchange_id
-	`, toTable, interval, fromTable, interval)
+	`, toTable, intervalExpr, fromTable, intervalExpr)
 
 	err := c.clickhouseDB.Exec(ctx, query, startTime, endTime)
 	if err != nil {
@@ -314,23 +314,23 @@ func (c *Converter) getTableName(tf Timeframe) string {
 	return fmt.Sprintf("ohlcv_%s", tf)
 }
 
-// getTimeInterval returns ClickHouse interval function for timeframe
-func (c *Converter) getTimeInterval(tf Timeframe) string {
+// getIntervalExpression returns the complete interval expression for GROUP BY and SELECT
+func (c *Converter) getIntervalExpression(tf Timeframe) string {
 	switch tf {
 	case Timeframe5m:
-		return "FiveMinute"
+		return "toStartOfInterval(timestamp, INTERVAL 5 MINUTE)"
 	case Timeframe15m:
-		return "FifteenMinutes"
+		return "toStartOfInterval(timestamp, INTERVAL 15 MINUTE)"
 	case Timeframe1h:
-		return "Hour"
+		return "toStartOfInterval(timestamp, INTERVAL 1 HOUR)"
 	case Timeframe4h:
-		return "Interval(4 HOUR)"
+		return "toStartOfInterval(timestamp, INTERVAL 4 HOUR)"
 	case Timeframe1d:
-		return "Day"
+		return "toStartOfDay(timestamp)"
 	case Timeframe1w:
-		return "Week"
+		return "toStartOfWeek(timestamp)"
 	default:
-		return "Minute"
+		return "toStartOfMinute(timestamp)"
 	}
 }
 
