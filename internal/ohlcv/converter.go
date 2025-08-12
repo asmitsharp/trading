@@ -344,7 +344,7 @@ func (c *Converter) GetCandles(ctx context.Context, baseTokenID, quoteTokenID ui
 			timestamp, base_token_id, quote_token_id, exchange_id,
 			open, high, low, close, volume, quote_volume,
 			trade_count, vwap_price, version
-		FROM %s FINAL
+		FROM %s
 		WHERE base_token_id = ? AND quote_token_id = ?
 			%s
 		ORDER BY timestamp DESC
