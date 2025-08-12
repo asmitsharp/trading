@@ -71,12 +71,12 @@ func (c *Converter) GenerateFromPriceTickers(ctx context.Context, startTime, end
 			max(price) AS high,
 			min(price) AS low,
 			anyLast(price) AS close,  -- Last price in the minute
-			sum(volume_24h) / 1440 AS volume,
-			sum(volume_24h * price) / 1440 AS quote_volume,
+			toDecimal64(sum(toFloat64(volume_24h)), 18) AS volume,  -- Sum 24h volumes (CoinMarketCap approach)
+			toDecimal64(sum(toFloat64(volume_24h) * toFloat64(price)), 18) AS quote_volume,
 			count() AS trade_count,
-			if(sum(volume_24h) > 0, 
-				sum(price * volume_24h) / sum(volume_24h), 
-				avg(price)) AS vwap_price,
+			if(sum(toFloat64(volume_24h)) > 0, 
+				toDecimal64(sum(toFloat64(price) * toFloat64(volume_24h)) / sum(toFloat64(volume_24h)), 18), 
+				toDecimal64(avg(toFloat64(price)), 18)) AS vwap_price,
 			toUnixTimestamp64Milli(now64()) AS version
 		FROM price_tickers
 		WHERE timestamp >= ? AND timestamp < ?
@@ -118,10 +118,10 @@ func (c *Converter) GenerateFromVWAP(ctx context.Context, startTime, endTime tim
 			max(vwap_price) AS high,
 			min(vwap_price) AS low,
 			anyLast(vwap_price) AS close,
-			sum(total_volume) AS volume,
-			sum(total_volume * vwap_price) AS quote_volume,
+			toDecimal64(sum(toFloat64(total_volume)), 18) AS volume,
+			toDecimal64(sum(toFloat64(total_volume) * toFloat64(vwap_price)), 18) AS quote_volume,
 			count() AS trade_count,
-			avg(vwap_price),  -- Simple average for aggregated VWAP
+			toDecimal64(avg(toFloat64(vwap_price)), 18) AS vwap_price,  -- Simple average for aggregated VWAP
 			toUInt8(avg(exchange_count)) AS exchange_count,
 			toUnixTimestamp64Milli(now64()) AS version
 		FROM vwap_prices
@@ -161,12 +161,12 @@ func (c *Converter) RollupCandles(ctx context.Context, from, to Timeframe, start
 			max(high) AS high,
 			min(low) AS low,
 			anyLast(close) AS close,  -- Last close in the period
-			sum(volume) AS volume,
-			sum(quote_volume) AS quote_volume,
+			anyLast(volume) AS volume,  -- Use last volume (24h volume approach)
+			anyLast(quote_volume) AS quote_volume,  -- Use last quote volume
 			sum(trade_count) AS trade_count,
-			if(sum(volume) > 0,
-				toDecimal64(sum(toDecimal64(vwap_price, 9) * toDecimal64(volume, 9)) / sum(toDecimal64(volume, 9)), 18),
-				toDecimal64(avg(vwap_price), 18)) AS vwap_price,
+			if(sum(toFloat64(volume)) > 0,
+				toDecimal64(sum(toFloat64(vwap_price) * toFloat64(volume)) / sum(toFloat64(volume)), 18),
+				toDecimal64(avg(toFloat64(vwap_price)), 18)) AS vwap_price,
 			toUnixTimestamp64Milli(now64()) AS version
 		FROM %s
 		WHERE timestamp >= ? AND timestamp < ?
@@ -266,12 +266,12 @@ func (c *Converter) AggregateExchanges(ctx context.Context, timeframe Timeframe,
 			max(high) AS high,
 			min(low) AS low,
 			max(close) AS close,  -- Highest close price across exchanges
-			sum(volume) AS volume,
-			sum(quote_volume) AS quote_volume,
+			max(volume) AS volume,  -- Use max volume across exchanges (24h volume approach)
+			max(quote_volume) AS quote_volume,
 			sum(trade_count) AS trade_count,
-			if(sum(volume) > 0,
-				toDecimal64(sum(toDecimal64(vwap_price, 9) * toDecimal64(volume, 9)) / sum(toDecimal64(volume, 9)), 18),
-				toDecimal64(avg(vwap_price), 18)) AS vwap_price,
+			if(sum(toFloat64(volume)) > 0,
+				toDecimal64(sum(toFloat64(vwap_price) * toFloat64(volume)) / sum(toFloat64(volume)), 18),
+				toDecimal64(avg(toFloat64(vwap_price)), 18)) AS vwap_price,
 			count(DISTINCT exchange_id) AS exchange_count,
 			toUnixTimestamp64Milli(now64()) AS version
 		FROM %s
@@ -335,9 +335,9 @@ func (c *Converter) getTimeInterval(tf Timeframe) string {
 }
 
 // GetCandles retrieves OHLCV data for a specific pair and timeframe
-func (c *Converter) GetCandles(ctx context.Context, baseTokenID, quoteTokenID uint32, 
+func (c *Converter) GetCandles(ctx context.Context, baseTokenID, quoteTokenID uint32,
 	tf Timeframe, exchangeID string, limit int) ([]Candle, error) {
-	
+
 	table := c.getTableName(tf)
 	query := fmt.Sprintf(`
 		SELECT 
