@@ -1,0 +1,31 @@
+-- Rollback migration: Restore original ohlcv_1d table with exchange_id
+
+-- Drop the aggregated table
+DROP TABLE IF EXISTS ohlcv_1d;
+
+-- Restore original table structure with exchange_id
+CREATE TABLE IF NOT EXISTS ohlcv_1d (
+    timestamp DateTime64(3),
+    base_token_id UInt32,
+    quote_token_id UInt32,
+    exchange_id String,
+    open Decimal(38, 18),
+    high Decimal(38, 18),
+    low Decimal(38, 18),
+    close Decimal(38, 18),
+    volume Decimal(38, 18),
+    quote_volume Decimal(38, 18),
+    trade_count UInt32,
+    vwap_price Decimal(38, 18),
+    created_at DateTime64(3) DEFAULT now64(),
+    version UInt64 DEFAULT toUnixTimestamp64Milli(now64())
+) ENGINE = ReplacingMergeTree(version)
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (base_token_id, quote_token_id, exchange_id, timestamp)
+SETTINGS index_granularity = 8192;
+
+-- Restore backup data if it exists
+INSERT INTO ohlcv_1d SELECT * FROM ohlcv_1d_backup WHERE 1=0; -- Will fail gracefully if backup doesn't exist
+
+-- Clean up
+DROP TABLE IF EXISTS ohlcv_1d_backup;

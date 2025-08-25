@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"sync"
 	"syscall"
@@ -21,6 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/ashmitsharp/trading/internal/calculator"
+	"github.com/ashmitsharp/trading/internal/chart_api"
 	"github.com/ashmitsharp/trading/internal/exchanges"
 	"github.com/ashmitsharp/trading/internal/handler"
 	"github.com/ashmitsharp/trading/internal/ohlcv"
@@ -42,6 +44,7 @@ type Application struct {
 	verificationHandler  *handler.VerificationHandler
 	volumeNormalizer     *exchanges.VolumeNormalizer
 	ohlcvService         *ohlcv.Service
+	chartService         *chart_api.ChartService
 }
 
 func main() {
@@ -118,6 +121,9 @@ func main() {
 	// Initialize OHLCV service
 	app.ohlcvService = ohlcv.NewService(app.clickhouseDB, logger)
 
+	// Initialize chart service (WebSocket + Historical API)
+	app.chartService = chart_api.NewChartService(app.clickhouseDB, logger)
+
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -134,6 +140,14 @@ func main() {
 
 	// Start services
 	var wg sync.WaitGroup
+
+	// Start chart service (always runs for API)
+	if serviceMode == "api" || serviceMode == "all" {
+		if err := app.chartService.Start(); err != nil {
+			logger.Fatal("Failed to start chart service", zap.Error(err))
+		}
+		defer app.chartService.Stop()
+	}
 
 	switch serviceMode {
 	case "poller":
@@ -187,8 +201,8 @@ func (app *Application) initDatabases() error {
 
 	// Initialize ClickHouse
 	chHost := getEnv("CLICKHOUSE_HOST", "localhost")
-	chPort := getEnv("CLICKHOUSE_PORT", "9001")
-	chDB := getEnv("CLICKHOUSE_DATABASE", "crypto_platform")
+	chPort := getEnv("CLICKHOUSE_PORT", "9001")  // Use port from .env
+	chDB := getEnv("CLICKHOUSE_DATABASE", "crypto_platform")  // Use existing database
 	chUser := getEnv("CLICKHOUSE_USER", "default")
 	chPassword := getEnv("CLICKHOUSE_PASSWORD", "clickhouse123")
 
@@ -202,7 +216,10 @@ func (app *Application) initDatabases() error {
 		Settings: clickhouse.Settings{
 			"max_execution_time": 60,
 		},
-		DialTimeout: 5 * time.Second,
+		DialTimeout:      30 * time.Second,
+		ConnMaxLifetime:  time.Hour,
+		MaxOpenConns:     5,
+		MaxIdleConns:     2,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to connect to ClickHouse: %w", err)
@@ -337,9 +354,17 @@ func (app *Application) resolveToken(exchangeID, symbol, slug string) (int, stri
 
 func (app *Application) pollExchanges(ctx context.Context, clients map[string]exchanges.ExchangeClient) {
 	pollTime := time.Now()
+	
+	// Get CPU stats before polling
+	var memStatsBefore runtime.MemStats
+	runtime.ReadMemStats(&memStatsBefore)
+	goroutinesBefore := runtime.NumGoroutine()
+	
 	app.logger.Info("Starting poll cycle",
 		zap.Time("poll_time", pollTime),
-		zap.String("minute", pollTime.Format("15:04")))
+		zap.String("minute", pollTime.Format("15:04")),
+		zap.Int("goroutines_before", goroutinesBefore),
+		zap.Uint64("alloc_mb_before", memStatsBefore.Alloc/1024/1024))
 
 	// Collect prices from all exchanges
 	var wg sync.WaitGroup
@@ -428,11 +453,20 @@ func (app *Application) pollExchanges(ctx context.Context, clients map[string]ex
 	// Store VWAP prices in ClickHouse
 	app.storeVWAPPrices(ctx, vwapResults)
 	
-	// Log poll completion
+	// Get CPU stats after polling
+	var memStatsAfter runtime.MemStats
+	runtime.ReadMemStats(&memStatsAfter)
+	goroutinesAfter := runtime.NumGoroutine()
+	
+	// Log poll completion with resource usage
 	app.logger.Info("Poll cycle completed",
 		zap.Time("completed_at", time.Now()),
 		zap.Duration("duration", time.Since(pollTime)),
-		zap.Int("pairs_processed", len(vwapResults)))
+		zap.Int("pairs_processed", len(vwapResults)),
+		zap.Int("goroutines_after", goroutinesAfter),
+		zap.Uint64("alloc_mb_after", memStatsAfter.Alloc/1024/1024),
+		zap.Uint64("total_alloc_mb", memStatsAfter.TotalAlloc/1024/1024),
+		zap.Uint32("num_gc", memStatsAfter.NumGC))
 }
 
 func (app *Application) storeVWAPPrices(ctx context.Context, results map[string]*calculator.EnhancedVWAPResult) {
@@ -534,6 +568,12 @@ func (app *Application) setupRoutes(router *gin.Engine) {
 
 	// Serve admin dashboard
 	router.Static("/admin", "./web/admin")
+	
+	// Serve charts dashboard
+	router.Static("/charts", "./web/charts")
+
+	// Initialize chart handler
+	chartHandler := handler.NewChartHandler(app.chartService, app.logger)
 
 	// API v1 routes
 	v1 := router.Group("/api/v1")
@@ -554,9 +594,26 @@ func (app *Application) setupRoutes(router *gin.Engine) {
 		v1.GET("/vwap/:symbol", app.getVWAPPrice)
 		v1.GET("/vwap/stats", app.getVWAPStats)
 		
-		// OHLCV endpoints
+		// OHLCV endpoints (legacy)
 		v1.GET("/ohlcv/:base/:quote", app.getOHLCV)
 		v1.POST("/ohlcv/backfill", app.backfillOHLCV)
+		
+		// Chart endpoints (new WebSocket + historical API)
+		chart := v1.Group("/chart")
+		{
+			// WebSocket endpoint for live streaming
+			chart.GET("/ws", chartHandler.HandleWebSocket)
+			
+			// Historical candle data
+			chart.GET("/candles", chartHandler.GetHistoricalCandles)
+			
+			// Latest price
+			chart.GET("/price/:baseTokenID/:quoteTokenID", chartHandler.GetLatestPrice)
+			
+			// Metadata endpoints
+			chart.GET("/timeframes", chartHandler.GetSupportedTimeframes)
+			chart.GET("/stats", chartHandler.GetChartStats)
+		}
 		
 		// Verification endpoints (admin)
 		admin := v1.Group("/admin")
@@ -568,6 +625,11 @@ func (app *Application) setupRoutes(router *gin.Engine) {
 			admin.POST("/outliers/:id/resolve", app.resolveOutlier)
 		}
 	}
+	
+	// Redirect root to charts
+	router.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/charts/")
+	})
 }
 
 // Handler functions

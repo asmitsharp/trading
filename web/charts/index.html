@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Crypto Price Charts</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #2d2d2d;
+            border-radius: 8px;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        select, input, button {
+            padding: 8px 12px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background-color: #3d3d3d;
+            color: white;
+            font-size: 14px;
+        }
+        button {
+            background-color: #007bff;
+            border-color: #007bff;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .status.connected {
+            background-color: #155724;
+            border: 1px solid #28a745;
+        }
+        .status.disconnected {
+            background-color: #721c24;
+            border: 1px solid #dc3545;
+        }
+        .chart-container {
+            height: 500px;
+            background-color: #2d2d2d;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .price-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .price-card {
+            background-color: #2d2d2d;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .price-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00d4aa;
+        }
+        .price-label {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+        .logs {
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Live Crypto Price Charts</h1>
+            <p>Real-time VWAP prices from multiple exchanges</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Token Pair:</label>
+                <input type="number" id="baseTokenId" value="1" placeholder="Base Token ID" min="1">
+                <span>/</span>
+                <input type="number" id="quoteTokenId" value="3" placeholder="Quote Token ID" min="1">
+                <button onclick="subscribeToPair()">Subscribe</button>
+            </div>
+            <div class="control-group">
+                <span id="connectionStatus" class="status disconnected">Disconnected</span>
+                <button onclick="toggleConnection()">Connect</button>
+            </div>
+        </div>
+
+        <div class="price-info">
+            <div class="price-card">
+                <div class="price-label">Current Price</div>
+                <div class="price-value" id="currentPrice">--</div>
+            </div>
+            <div class="price-card">
+                <div class="price-label">24h Volume</div>
+                <div class="price-value" id="volume24h">--</div>
+            </div>
+            <div class="price-card">
+                <div class="price-label">Exchange Count</div>
+                <div class="price-value" id="exchangeCount">--</div>
+            </div>
+            <div class="price-card">
+                <div class="price-label">Last Update</div>
+                <div class="price-value" id="lastUpdate">--</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div id="priceChart" style="width: 100%; height: 100%;"></div>
+        </div>
+
+        <div class="logs" id="logs">
+            <div>WebSocket logs will appear here...</div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let ws = null;
+        let chart = null;
+        let priceData = [];
+        let timeData = [];
+        let maxDataPoints = 100;
+        let currentSubscription = null;
+
+        // Initialize ECharts
+        function initChart() {
+            const chartDom = document.getElementById('priceChart');
+            chart = echarts.init(chartDom, 'dark');
+            
+            const option = {
+                title: {
+                    text: 'Live VWAP Price',
+                    left: 'center',
+                    textStyle: {
+                        color: '#fff'
+                    }
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross'
+                    },
+                    formatter: function(params) {
+                        const data = params[0];
+                        const time = new Date(data.axisValue).toLocaleTimeString();
+                        return `Time: ${time}<br/>Price: $${data.value.toFixed(2)}`;
+                    }
+                },
+                xAxis: {
+                    type: 'time',
+                    boundaryGap: false,
+                    axisLabel: {
+                        formatter: function(value) {
+                            return new Date(value).toLocaleTimeString();
+                        }
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    scale: true,
+                    axisLabel: {
+                        formatter: '${value}'
+                    }
+                },
+                series: [{
+                    name: 'VWAP Price',
+                    type: 'line',
+                    smooth: true,
+                    symbol: 'circle',
+                    symbolSize: 4,
+                    lineStyle: {
+                        color: '#00d4aa',
+                        width: 2
+                    },
+                    itemStyle: {
+                        color: '#00d4aa'
+                    },
+                    areaStyle: {
+                        color: {
+                            type: 'linear',
+                            x: 0, y: 0, x2: 0, y2: 1,
+                            colorStops: [
+                                { offset: 0, color: 'rgba(0, 212, 170, 0.3)' },
+                                { offset: 1, color: 'rgba(0, 212, 170, 0.05)' }
+                            ]
+                        }
+                    },
+                    data: []
+                }]
+            };
+            
+            chart.setOption(option);
+            
+            // Make chart responsive
+            window.addEventListener('resize', () => {
+                chart.resize();
+            });
+        }
+
+        // WebSocket functions
+        function connectWebSocket() {
+            const wsUrl = `ws://${window.location.host}/api/v1/chart/ws`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                log('✅ Connected to WebSocket');
+                updateConnectionStatus(true);
+                
+                // Auto-subscribe to default pair (1/3) if no current subscription
+                if (!currentSubscription) {
+                    subscribeToPair();
+                }
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleWebSocketMessage(message);
+                } catch (error) {
+                    log(`❌ Error parsing message: ${error.message}`);
+                }
+            };
+
+            ws.onclose = function() {
+                log('🔌 WebSocket disconnected');
+                updateConnectionStatus(false);
+                currentSubscription = null;
+                
+                // Attempt to reconnect after 3 seconds
+                setTimeout(() => {
+                    if (document.getElementById('connectionStatus').textContent.includes('Disconnected')) {
+                        log('🔄 Attempting to reconnect...');
+                        connectWebSocket();
+                    }
+                }, 3000);
+            };
+
+            ws.onerror = function(error) {
+                log(`❌ WebSocket error: ${error}`);
+                updateConnectionStatus(false);
+            };
+        }
+
+        function handleWebSocketMessage(message) {
+            log(`📨 Received: ${message.type}`);
+            
+            switch (message.type) {
+                case 'welcome':
+                    log(`👋 Welcome! Client ID: ${message.data.client_id}`);
+                    break;
+                    
+                case 'subscription_success':
+                    log(`✅ Subscribed to ${message.channel}`);
+                    break;
+                    
+                case 'price_update':
+                    handlePriceUpdate(message.data);
+                    break;
+                    
+                case 'error':
+                    log(`❌ Error: ${message.error}`);
+                    break;
+                    
+                default:
+                    log(`📄 Unknown message type: ${message.type}`);
+            }
+        }
+
+        function handlePriceUpdate(priceData) {
+            // Update price info cards
+            document.getElementById('currentPrice').textContent = `$${parseFloat(priceData.vwap_price).toFixed(2)}`;
+            document.getElementById('volume24h').textContent = formatVolume(priceData.volume_24h);
+            document.getElementById('exchangeCount').textContent = priceData.exchange_count;
+            document.getElementById('lastUpdate').textContent = new Date(priceData.timestamp).toLocaleTimeString();
+
+            // Add data to chart
+            const timestamp = new Date(priceData.timestamp).getTime();
+            const price = parseFloat(priceData.vwap_price);
+            
+            // Add new data point
+            priceData.length = Math.min(priceData.length, maxDataPoints);
+            timeData.push(timestamp);
+            priceData.push(price);
+            
+            // Keep only last N data points
+            if (timeData.length > maxDataPoints) {
+                timeData.shift();
+                priceData.shift();
+            }
+            
+            // Update chart
+            updateChart();
+            
+            log(`📈 Price update: $${price.toFixed(2)} (${priceData.exchange_count} exchanges)`);
+        }
+
+        function updateChart() {
+            if (!chart) return;
+            
+            const data = timeData.map((time, index) => [time, priceData[index]]);
+            
+            chart.setOption({
+                series: [{
+                    data: data
+                }]
+            });
+        }
+
+        function subscribeToPair() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('❌ Not connected to WebSocket');
+                return;
+            }
+
+            const baseTokenId = parseInt(document.getElementById('baseTokenId').value);
+            const quoteTokenId = parseInt(document.getElementById('quoteTokenId').value);
+
+            if (!baseTokenId || !quoteTokenId) {
+                log('❌ Please enter valid token IDs');
+                return;
+            }
+
+            // Unsubscribe from previous pair if exists
+            if (currentSubscription) {
+                ws.send(JSON.stringify({
+                    type: 'unsubscribe',
+                    channel: 'price',
+                    base_token_id: currentSubscription.base_token_id,
+                    quote_token_id: currentSubscription.quote_token_id
+                }));
+            }
+
+            // Subscribe to new pair
+            const subscription = {
+                type: 'subscribe',
+                channel: 'price',
+                base_token_id: baseTokenId,
+                quote_token_id: quoteTokenId
+            };
+
+            ws.send(JSON.stringify(subscription));
+            currentSubscription = { base_token_id: baseTokenId, quote_token_id: quoteTokenId };
+            
+            // Clear previous data
+            priceData = [];
+            timeData = [];
+            updateChart();
+            
+            log(`📡 Subscribing to token pair ${baseTokenId}/${quoteTokenId}`);
+        }
+
+        function toggleConnection() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+                log('🔌 Disconnecting...');
+            } else {
+                connectWebSocket();
+                log('🔄 Connecting...');
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('connectionStatus');
+            const button = statusElement.nextElementSibling;
+            
+            if (connected) {
+                statusElement.textContent = 'Connected';
+                statusElement.className = 'status connected';
+                button.textContent = 'Disconnect';
+            } else {
+                statusElement.textContent = 'Disconnected';
+                statusElement.className = 'status disconnected';
+                button.textContent = 'Connect';
+            }
+        }
+
+        function formatVolume(volume) {
+            const vol = parseFloat(volume);
+            if (vol >= 1e9) {
+                return `$${(vol / 1e9).toFixed(2)}B`;
+            } else if (vol >= 1e6) {
+                return `$${(vol / 1e6).toFixed(2)}M`;
+            } else if (vol >= 1e3) {
+                return `$${(vol / 1e3).toFixed(2)}K`;
+            }
+            return `$${vol.toFixed(2)}`;
+        }
+
+        function log(message) {
+            const logsElement = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            
+            logsElement.appendChild(logEntry);
+            logsElement.scrollTop = logsElement.scrollHeight;
+            
+            // Keep only last 50 log entries
+            while (logsElement.children.length > 50) {
+                logsElement.removeChild(logsElement.firstChild);
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initChart();
+            log('🚀 Chart initialized');
+            log('💡 Enter token IDs and click Subscribe to start streaming');
+            log('💡 Known working pair: 1/3 (from your VWAP data)');
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                subscribeToPair();
+            } else if (event.key === 'Escape') {
+                if (ws) ws.close();
+            }
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Live Crypto Price Charts</h1>
+            <p>Real-time VWAP prices from your trading system</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Token Pair:</label>
+                <input type="number" id="baseTokenId" value="1" placeholder="Base Token ID" min="1">
+                <span>/</span>
+                <input type="number" id="quoteTokenId" value="3" placeholder="Quote Token ID" min="1">
+                <button onclick="subscribeToPair()">Subscribe</button>
+            </div>
+            <div class="control-group">
+                <span id="connectionStatus" class="status disconnected">Disconnected</span>
+                <button onclick="toggleConnection()">Connect</button>
+            </div>
+        </div>
+
+        <div class="price-info">
+            <div class="price-card">
+                <div class="price-label">Current Price</div>
+                <div class="price-value" id="currentPrice">--</div>
+            </div>
+            <div class="price-card">
+                <div class="price-label">24h Volume</div>
+                <div class="price-value" id="volume24h">--</div>
+            </div>
+            <div class="price-card">
+                <div class="price-label">Exchange Count</div>
+                <div class="price-value" id="exchangeCount">--</div>
+            </div>
+            <div class="price-card">
+                <div class="price-label">Last Update</div>
+                <div class="price-value" id="lastUpdate">--</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div id="priceChart" style="width: 100%; height: 100%;"></div>
+        </div>
+
+        <div class="logs" id="logs">
+            <div>💡 Tips:</div>
+            <div>• Press Enter to subscribe to current token pair</div>
+            <div>• Press Escape to disconnect</div>
+            <div>• Try token pair 1/3 (known to have data)</div>
+        </div>
+    </div>
+</body>
+</html>
