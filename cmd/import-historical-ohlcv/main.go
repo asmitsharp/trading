@@ -111,8 +111,13 @@ func main() {
 		zap.String("exchange_scripts_dir", exchangeScriptsDir))
 
 	// Database connections
-	postgres, err := sql.Open("postgres",
-		"postgres://username:password@localhost/trading?sslmode=disable")
+	pgHost := getEnv("POSTGRES_HOST", "localhost")
+	pgUser := getEnv("POSTGRES_USER", "crypto_user")
+	pgPass := getEnv("POSTGRES_PASSWORD", "crypto_password")
+	pgDB := getEnv("POSTGRES_DATABASE", "crypto_platform")
+	
+	connStr := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", pgUser, pgPass, pgHost, pgDB)
+	postgres, err := sql.Open("postgres", connStr)
 	if err != nil {
 		logger.Fatal("Failed to connect to PostgreSQL", zap.Error(err))
 	}
@@ -166,6 +171,13 @@ func main() {
 	}
 
 	logger.Info("Historical OHLCV import completed successfully!")
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 // ProcessTimeframeDirectories processes all directories matching the timeframe pattern
